@@ -1,0 +1,213 @@
+ঠিক আছে, একটা comprehensive reading list দিচ্ছি — topic-by-topic, link সহ। শুরু থেকে advanced পর্যন্ত।
+
+---
+
+## 📚 Core Papers (অবশ্যই পড়তে হবে)
+
+**BALS — আপনার base paper**
+https://ieeexplore.ieee.org/document/9373912/
+Chen et al., "BALS: Blocked Alternating Least Squares for Parallel Sparse Matrix Factorization on GPUs", IEEE TPDS 2021
+
+**cuMF_ALS — Approximate Computing precursor**
+https://arxiv.org/pdf/1808.03843
+Tan et al., "Matrix Factorization on GPUs with Memory Optimization and Approximate Computing", ICPP 2018
+
+**cuMF_SGD — GPU MF foundation**
+https://arxiv.org/pdf/1610.05838
+Xie et al., "CuMF_SGD: Fast and Scalable Matrix Factorization", HPDC 2017
+
+**Koren classic — MF basics**
+https://datajobs.com/data-science-repo/Recommender-Systems-[Netflix].pdf
+Koren, Bell, Volinsky, "Matrix Factorization Techniques for Recommender Systems", IEEE Computer 2009
+
+---
+
+## 🎯 Mixed Precision — Tile/Block Level (closest related work)
+
+**BDMP — সবচেয়ে কাছাকাছি কাজ**
+https://link.springer.com/article/10.1007/s11227-024-05949-6
+"Block-wise Dynamic Mixed-Precision for SpMV on GPUs", J. Supercomputing 2024
+
+**PaRSEC tile-centric mixed precision**
+https://arxiv.org/html/2508.14848
+"Leveraging Hardware-Aware Computation in Mixed-Precision Matrix Multiply: A Tile-Centric Approach", 2025
+
+**tSparse — Tensor Core spGEMM**
+https://arxiv.org/pdf/2009.14600
+"Accelerating Sparse Matrix-Matrix Multiplication with GPU Tensor Cores", 2020
+
+**Mixed-precision iterative refinement (foundational)**
+https://www.ncbi.nlm.nih.gov/pmc/articles/PMC7735315/
+Haidar et al., "Mixed-precision iterative refinement using tensor cores on GPUs", 2020
+
+---
+
+## 🔧 CUDA & Mixed Precision Programming
+
+**NVIDIA CUDA C++ Programming Guide**
+https://docs.nvidia.com/cuda/cuda-c-programming-guide/index.html
+
+**NVIDIA Mixed Precision Training Guide**
+https://docs.nvidia.com/deeplearning/performance/mixed-precision-training/index.html
+
+**cuBLAS Library Documentation (cublasGemmEx, cublasHgemm)**
+https://docs.nvidia.com/cuda/cublas/index.html
+
+**WMMA API for Tensor Cores**
+https://docs.nvidia.com/cuda/cuda-c-programming-guide/index.html#wmma
+
+**NVIDIA Tensor Core Programming**
+https://developer.nvidia.com/blog/programming-tensor-cores-cuda-9/
+
+**Half-precision Floating Point Tutorial**
+https://developer.nvidia.com/blog/mixed-precision-programming-cuda-8/
+
+---
+
+## 📖 Numerical Analysis Background (FP16-এর accuracy বুঝতে)
+
+**Higham's classic on numerical accuracy**
+https://nhigham.com/2020/11/19/half-precision-arithmetic/
+Nicholas Higham's blog on half-precision
+
+**SIAM paper on FP16 error analysis**
+https://epubs.siam.org/doi/10.1137/19M1289546
+"Mixed Precision Block FMA: Error Analysis and Application to GPU Tensor Cores"
+
+**Rounding Error Analysis Survey**
+https://arxiv.org/abs/2007.06674
+Higham & Mary, "Mixed precision algorithms in numerical linear algebra"
+
+---
+
+## 🏗️ Sparse Matrix Storage & GPU
+
+**TileSpMV — tile-based sparse format**
+https://ieeexplore.ieee.org/document/9460491
+"TileSpMV: A Tiled Algorithm for Sparse Matrix-Vector Multiplication on GPUs", IPDPS 2021
+
+**Sparse format survey**
+https://arxiv.org/abs/2010.14965
+"A Survey on GPU-Based Implementation of Sparse Matrix-Vector Multiplication"
+
+**Hierarchical mixed-precision SpMV (2025)**
+Search: "Hierarchical mixed-precision SpMV GPU 2025" on Google Scholar
+
+---
+
+## 🎓 Recommender System Background
+
+**Microsoft Recommenders (with code examples)**
+https://github.com/recommenders-team/recommenders
+
+**Hu, Koren, Volinsky — Implicit feedback ALS**
+https://ieeexplore.ieee.org/document/4781121
+"Collaborative Filtering for Implicit Feedback Datasets", ICDM 2008
+
+**Stanford CME323 ALS lecture notes**
+http://stanford.edu/~rezab/classes/cme323/S15/notes/lec14.pdf
+
+**Spark MLlib ALS documentation**
+https://spark.apache.org/docs/latest/ml-collaborative-filtering.html
+
+---
+
+## 📊 Datasets
+
+**MovieLens (all sizes)**
+https://grouplens.org/datasets/movielens/
+
+**Netflix Prize Dataset**
+https://www.kaggle.com/datasets/netflix-inc/netflix-prize-data
+
+**Yahoo Music Dataset (R1, R2)**
+https://webscope.sandbox.yahoo.com/catalog.php?datatype=r
+
+**SuiteSparse Matrix Collection (sparse matrices)**
+https://sparse.tamu.edu/
+
+---
+
+## 💻 Source Code (clone করে study করার জন্য)
+
+**cuMF_ALS (guaranteed available)**
+https://github.com/cuMF/cumf_als
+
+**cuMF_SGD**
+https://github.com/cuMF/cumf_sgd
+
+**cu2rec**
+https://github.com/nickgreenquist/cu2rec
+
+**Implicit (Python ALS with CUDA)**
+https://github.com/benfred/implicit
+
+**LIBMF (CPU baseline)**
+https://www.csie.ntu.edu.tw/~cjlin/libmf/
+
+---
+
+## 🛠️ Profiling & Tools
+
+**NVIDIA Nsight Compute Documentation**
+https://docs.nvidia.com/nsight-compute/
+
+**NVIDIA Nsight Systems**
+https://docs.nvidia.com/nsight-systems/
+
+**Roofline Performance Model**
+https://crd.lbl.gov/divisions/amcr/computer-science-amcr/par/research/roofline/
+
+---
+
+## 📰 Useful Surveys (broad context-এর জন্য)
+
+**Matrix Factorization Survey**
+https://www.cs.utexas.edu/~inderjit/public_papers/kais-pmf.pdf
+Yu et al., "Parallel Matrix Factorization for Recommender Systems"
+
+**GPU Sparse Linear Algebra Survey**
+https://www.osti.gov/servlets/purl/1825849
+"Survey of Numerical Linear Algebra Methods Utilizing Mixed Precision Arithmetic"
+
+**Mixed-precision survey (recent)**
+https://arxiv.org/abs/2303.04945
+"Mixed-Precision Numerical Linear Algebra Algorithms: Integer Arithmetic Based LU"
+
+---
+
+## 🎥 Video Lectures (যদি video থেকে শিখতে comfortable)
+
+**NVIDIA GTC talks on mixed precision** — search "mixed precision tensor cores" on:
+https://www.nvidia.com/en-us/on-demand/
+
+**Ian Buck on Tensor Cores**
+https://www.youtube.com/results?search_query=nvidia+tensor+cores+programming
+
+**MIT 6.172 Performance Engineering**
+https://ocw.mit.edu/courses/6-172-performance-engineering-of-software-systems-fall-2018/
+
+---
+
+## 🔍 যেগুলো প্রথমে পড়বেন (priority order)
+
+প্রথম pass-এ পড়ুন:
+- BALS paper (3 বার, deeply)
+- Koren 2009 (MF basics)
+- cuMF_ALS approx (closest mixed-precision MF work)
+- NVIDIA Mixed Precision Programming blog
+
+দ্বিতীয় pass-এ পড়ুন:
+- cuMF_SGD (BALS-এর comparison baseline)
+- BDMP (closest tile-precision work)
+- Higham's half-precision blog
+- WMMA tutorial
+
+তৃতীয় pass-এ পড়ুন (when actually coding):
+- CUDA C++ Programming Guide chapters on memory, kernels, Tensor Cores
+- cuBLAS GemmEx examples
+- Nsight Compute tutorial
+
+---
+
+কোনো specific topic-এ আরও deep dive লাগলে বা link broken হলে জানাবেন।
