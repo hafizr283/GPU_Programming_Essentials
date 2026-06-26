@@ -1,0 +1,67 @@
+Recommended Stack for APR-BALS
+Use the hybrid approach: cuBLAS (primary for YᵀY) + cuSOLVER (for the linear solve).
+This is the best practical path to complete your honors thesis proposal and implementation.
+Why This Verdict?
+
+YᵀY Accumulation (core of your novelty):
+cuBLAS (cublasGemmEx, cublasGemmBatchedEx, or cublasGemmStridedBatchedEx) is the correct and optimal choice. It gives full access to Tensor Cores for mixed-precision (FP16/TF32 with FP32 accumulation). Your per-tile density classifier can directly dispatch different precision GEMMs here. This is where 1.5–2.5× speedup potential lives. BALS itself uses custom tiled kernels, but extending with library GEMM is standard and accelerates your mixed-precision contribution.
+Cholesky Factor + Solve (X = (YᵀY + λI)⁻¹ ...):
+cuSOLVER batched routines (cusolverDnSpotrfBatched + cusolverDnSpotrsBatched). This is standard for small batched dense solves in ALS implementations. For very small f (latent factors, typically 8–128), batched cuSOLVER performs well. (Note: cuBLAS has some batched getrf/trsm, but cuSOLVER is preferred for factorizations.)
+Overall: This hybrid is common in high-performance MF/ALS on GPUs (e.g., cuMF variants combine them; mixed-precision papers pair cuBLAS GEMM + cuSOLVER). It keeps your code maintainable for an undergrad thesis while highlighting your novel density-aware precision dispatch.
+
+Updates Needed in Your Proposal
+
+Section 5.1/6.1 (Design & Implementation): Add: "YᵀY accumulation via per-tile cuBLAS mixed-precision GEMM dispatch (FP16/TF32/FP32 based on tile density); linear solves via cuSOLVER batched Cholesky."
+Section 10 (Tools): Explicitly list cuBLAS + cuSOLVER.
+Risks: Minor — "Library integration overhead" (low, well-documented).
+Evaluation: Measure Tensor Core utilization (nsight-compute) on dense vs. sparse tiles.
+
+
+
+improvement idea: 
+দুটো জিনিস আগে miss হয়েছিল:
+
+---
+
+## নতুন পাওয়া গেল
+
+### 1. `cudaDeviceSynchronize()` — সবচেয়ে Silent Killer
+
+```cpp
+compute_RHS_kernel<<<1, K>>>(u, ...);
+cudaDeviceSynchronize(); // ← পুরো GPU block হয়ে যাচ্ছে প্রতি iteration-এ
+```
+
+এটা GPU-কে প্রতিটা user/item-এর পর **host পর্যন্ত sync** করাচ্ছে। `cudaStreamSynchronize(stream)` দিয়ে replace করলে শুধু ঐ stream wait করবে, বাকি কাজ চলতে পারবে।
+
+### 2. `d_info` কখনো check হচ্ছে না
+
+```cpp
+cusolverDnSpotrf(..., d_info); // Cholesky fail করলেও জানার উপায় নেই
+cusolverDnSpotrs(..., d_info); // wrong result নিয়ে loop চলতে থাকে
+```
+
+Cholesky fail মানে matrix singular বা near-singular — lambda ঠিক না থাকলে এটা হয়। Benchmark-এর সময় wrong convergence দেখাবে।
+
+---
+
+## Final Verdict — Priority Order
+
+| Priority | Optimization | কোথায় | Impact |
+|---|---|---|---|
+| **1** | `cusparseSpMM` | RHS computation | Kernel loop সম্পূর্ণ উঠে যায় |
+| **2** | Batched `Spotrs` (`nrhs=N`) | Solve loop | User/item loop উঠে যায় |
+| **3** | `cudaDeviceSynchronize` → `cudaStreamSynchronize` | Sync | Overlap unblock হয় |
+| **4** | CUDA Streams (compute overlap) | Phase 1/2 | LHS ও RHS parallel |
+| **5** | `cublasSsyrk` | LHS compute | ~half flops |
+| **6** | `cublasGemmEx` TF32 | LHS compute | Tensor Core (Ampere+) |
+| **7** | Diagonal kernel | Regularization | K sequential call বাদ |
+| **8** | Pinned Memory | H↔D transfer | ~2x transfer speed |
+| **9** | `__ldg` | Custom kernel cache | Minor |
+| **10** | `d_info` check | Correctness | Bug prevention |
+
+---
+
+**Core insight:** Priority 1+2+3 implement করলে তোমার sequential-per-user bottleneck **সম্পূর্ণ** শেষ হবে। বাকিগুলো incremental। Thesis benchmark-এর জন্য এই তিনটাই main contribution হওয়া উচিত।
+
+এই negative result নিজেই একটি ablation study হিসেবে report করা যায় — "Average-rating initialization did not improve convergence for ALS with blocked tile format, suggesting that the random uniform initialization (0.1–1.09) already provides sufficient diversity across all K latent dimensions for fast convergence."

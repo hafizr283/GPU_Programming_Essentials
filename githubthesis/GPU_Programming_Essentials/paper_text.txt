@@ -1,0 +1,923 @@
+GPU Accelerated Matrix Factorization for
+Recommender Systems
+Doruk Kilitcioglu, Nicholas Greenquisty, Mohamed Zahranz, Anasse Barix
+Courant Institute of Mathematical Sciences
+Department of Computer Science
+New York University, USA
+Email:doruk.kilitcioglu@nyu.edu,yntg251@nyu.edu,zmzahran@cs.nyu.edu,xabari@nyu.edu
+Abstract — Matrix Factorization (MF) is a popular algorithm
+used to power many recommender systems. Efﬁcient and scalable
+MF algorithms are essential in order to train on the massive
+datasets that large scale recommender systems utilize. Graphics
+Processing Unit (GPU) technology has become very popular in
+recent years and has become widely used in machine learning.
+The massive parallelism GPUs offer creates an opportunity to
+develop an accelerated MF algorithm. This paper presents cu2rec,
+a matrix factorization algorithm written in CUDA. cu2rec imple-
+ments a parallel version of Stochastic Gradient Descent (SGD) to
+solve large scale MF problems. cu2rec utilizes multiple advanced
+techniques to harness better performance from a GPU. These
+include aggressive use of constant memory for hyper-parameters
+and registers for heavily reused values, a sparse matrix data
+structure, a reduction sum total loss kernel, a novel approach
+to parallel lock-free updating of feature weights with minimized
+global memory writes, and fairness across weight updates using
+user index striding. With a single NVIDIA GPU, cu2rec can
+be 10x faster than state of the art sequential algorithms while
+reaching similar error metrics.
+Index Terms—recommender system, matrix factorization,
+GPU, CUDA, SGD
+I. I NTRODUCTION
+Matrix Factorization decomposes a rating matrix Rof shape
+mninto two feature matrices, PandQ.P(mf) and
+Q(nf), wherefis the number of factors, are the learned
+feature matrices[1]. The goal of MF is to ﬁnd the best Pand
+Qmatrices such that RPQT, as shown in Figure 1.
+In state of the art models, it also involves ﬁnding U(m1
+matrix of user biases) and B(n1matrix of item biases),
+with an additional global bias which is set to the mean of
+all ratings.
+MF is incredibly popular and has been used for serving rec-
+ommendations by companies such as Amazon and Netﬂix[2].
+In the era of big data, the datasets that MF is being asked
+to tackle are getting orders of magnitude larger than even the
+Netﬂix Dataset[3]. In order to keep up, MF algorithms need
+to be fast, scalable, and able to handle massive amounts of
+data.
+Today, GPUs are being used more and more to parallelize
+algorithms that need to run on big data. GPUs have much
+more compute power than CPUs and work well performing
+the same instruction on multiple pieces of data (SIMD)[4].
+GPUs originally were used for heavy graphical work but have
+become a staple of large machine learning models[5]. Because
+Fig. 1. Matrix Factorization
+of the explosion of GPU usage across much of machine
+learning, we wanted to see if they could be useful in the sub-
+ﬁeld of recommender systems.
+There are many different algorithms to solve the MF prob-
+lem for recommender systems. In this paper, we focus on
+Stochastic Gradient Descent (SGD). SGD has been shown to
+converge the fastest and is the most popular form of optimizer
+algorithm for recommender system speciﬁc MF, popularized
+by Koren [3]. SGD updates the values in PandQby using
+the gradients of the loss function for each estimated rating in
+Rcompared to the real value. For recommender systems, it
+was shown that MF should update weights by computing the
+loss only on nonzero ratings[6]. As such, MF algorithms for
+recommender systems are memory bounded by the number of
+nonzero ratings in the matrix R, not the full size of the matrix
+(mn).
+In this paper, we ﬁrst examine the literature of existing
+approaches to parallel MF for recommender systems. Next,
+we show a novel parallel implementation of SGD (cu2rec)
+that takes advantage of many of the GPU’s features and
+also utilizes a variety of advanced programming techniques.
+After discussing the implementation details, we describe the
+experimental setup where we test cu2rec against various
+sequential implementations of SGD MF on two different
+datasets. The results show that cu2rec is 20-40x faster than
+a naive sequential SGD implementation and 6-10x faster than
+one of the most popular recommender system library’s MF
+implementation. We conclude the paper with a discussion of
+future work and other matrix factorization algorithms.
+II. R ELATED WORK
+The Matrix Factorization approach to Recommender Sys-
+tems has been used with a variety of different user-item
+2722021 IEEE the 6th International Conference on Big Data Analytics
+978-0-7381-3167-2/21/$31.00 ©2021 IEEE2021 IEEE 6th International Conference on Big Data Analytics (ICBDA) | 978-1-6654-1513-2/21/$31.00 ©2021 IEEE | DOI: 10.1109/ICBDA51983.2021.9403110
+Authorized licensed use limited to: Khulna Univ of Engineering & Technology - KUET. Downloaded on October 04,2025 at 05:52:31 UTC from IEEE Xplore.  Restrictions apply. 
+rating matrices, and Singular Value Decomposition (SVD)
+[7] is perhaps the most inﬂuential algorithm in the history
+of Recommender Systems. It was popularized by the Netﬂix
+Prize[3], and still remains used today. We use the sparse biased
+SVD used by Koren et al. [1].
+The go-to dataset for Recommender Systems is the
+MovieLens[8] dataset, which has grown from 200k ratings
+to 20M ratings over the years. We use MovieLens and we
+support the previously mentioned Netﬂix Prize dataset[3], but
+it should also be noted that the Netﬂix Prize dataset has been
+removed from circulation due to privacy concerns, and will
+not be the focal point of our comparisons.
+There are many sequential implementations of SGD, and
+there have been many attempts at parallelizing SGD using
+multi-core, distributed, and GPU accelerated systems. We have
+outlined the most outstanding work below.
+A. Sequential
+Surprise[9] is one of the most popular recommender system
+libraries for Python. It uses Cython, which allows algorithms
+to be written in C and be called from Python, resulting in C-
+levels of performance. It has numerous optimizations built in
+to accelerate the training of the biased SVD[1], which makes
+it one of the fastest sequential implementations. We compare
+our results to it in order to benchmark our implementation.
+B. Multi-core
+In multi-core solutions, we take particular note of
+Hogwild[10], which is a lock-free multi-core approach that
+works well with sparse environments such as matrix factoriza-
+tion in the context of recommender systems. Hogwild forms
+the basis of our approach.
+The traditional method of parallelizing SGD requires locks,
+wherein the set of parameters that is used for one step of SGD
+is locked from being read until an update is ﬁnished. In the
+context of recommender systems, however, the sparsity of the
+matrix means that the set of parameters for a randomly chosen
+user-item pair is rarely overlapping with another randomly
+chosen pair. Recht et al. [10] exploits this idea to provide
+a lock-free, shared memory approach. Since multiple cores in
+a single GPU also share a single global memory, these ideas
+translate well for us.
+C. Distributed
+For distributed solutions, we look at NOMAD[11], which
+is a distributed implementation of the ideas outlined in Recht
+et al. [10]. It removes the need of a parameter server as
+outlined in the earlier work[12]. It only uses a number of
+asynchronous worker machines, each having access to a dif-
+ferent portion of the data. Each worker machine owns one
+portion of the users, and that assignment never changes. Each
+worker machine also owns one portion of the items. Whenever
+the worker machine is done with one or more of its items, it
+sends the items to another worker machine.
+This approach is lock-free because no two machines access
+the same users or the same items at the same time, and
+therefore updates can be made in parallel.D. GPU
+GPUs are a relatively new addition to matrix factorization
+for recommender systems. Of particular note are two solutions
+called CuMF-SGD[13] and CuMF-ALS[14]. Similar to our
+paper, the authors try to exploit GPUs for matrix factorization
+by using SGD and ALS respectively. We used these tools to
+compare our approach to theirs, which will be explained under
+evaluation.
+We also tried Implicit[15], a MF library powered by CUDA,
+that works on implicit ratings only. Items are given 1 as a
+rating if they are consumed, or 0 if they aren’t. Unfortunately,
+this discrepancy makes it impossible to compare results, as
+implicit ratings fundamentally uses different error metrics than
+explicit ratings.
+E. SGD vs ALS
+The jury is still out on whether or not SGD or Alternating
+Least Squares (ALS)[16] is more parallelizable. Tan et al. [14]
+claim that partitioning schemes such as those outlined in [11]
+do not scale with the number of cores a GPU works with,
+and that each iteration of SGD is inherently sequential and
+therefore it is better to use ALS.
+In contrast, Recht et al. [10] and Yun et al. [11] argue that in
+the context of sparse matrix factorization in recommender sys-
+tems, multiple SGD updates can be carried out simultaneously
+in parallel, and that leads to a higher potential for parallelism.
+In our work, we utilize SGD as our workhorse, with
+modiﬁcations that allow us to use the ideas outlined in Recht
+et al. [10] to be used with GPUs.
+III. I MPLEMENTATION
+A. SGD for Recommender system Matrix Factorization
+For the task of rating prediction, we use the biased SVD
+popularized by Koren et al. [1]. For each user uand itemi
+pair, the estimated rating ^Rui(which is the rating of item iby
+useru) and the error for that rating Eui(which is the error of
+the rating of item iby useru) are deﬁned by:
+^Rui=+Uu+Ii+QT
+iPu (1)
+Eui=Rui ^Rui (2)
+whereUuis the user bias (which is a single ﬂoat), Iiis the
+item bias (also a single ﬂoat), is the global mean, and Pu
+andQiare the user and item vectors in PandQrespectively.
+Our total loss function is the mean squared error of ratings,
+plus the regularization terms for the 4 matrices, which are the
+squared Frobenius norms of the matrices:
+L=1
+nn
+i=1(Ri ^Ri)2+pkPk2
+2+qkQk2
+2
++ukUk2
+2+ikIk2
+2(3)
+For SGD, we use the loss per item:
+Lui=E2
+ui+pkPuk2+qkQik2+ukUuk2+ikIik2(4)
+273
+Authorized licensed use limited to: Khulna Univ of Engineering & Technology - KUET. Downloaded on October 04,2025 at 05:52:31 UTC from IEEE Xplore.  Restrictions apply. 
+As with regular gradient descent, the update equation of any
+parameterxwith learning rate is deﬁned by
+x x @L
+@x(5)
+In our case, the parameters are each element of the P,Q,
+U, andImatrices. Below are the respective partial derivatives
+that are used with the update equation above:
+@Lui
+@Pu= (EuiQi pPu) (6)
+@Lui
+@Qi= (EuiPu qQi) (7)
+@Lui
+@Uu= (Eui uUu) (8)
+@Lui
+@Ii= (Eui iIi) (9)
+B. Parallel SGD Challenges
+As explained before in the related work, Tan et al. [14] claim
+that each iteration of SGD is inherently sequential, whereas
+Recht et al. [10] and Yun et al. [11] argue that in the context of
+sparse matrix factorization in recommender systems, multiple
+SGD updates can be carried out simultaneously in parallel.
+In our implementation, we utilized ideas similar to those
+outlined in Recht et al. [10], but modiﬁed it to be used
+with GPUs. Because the matrices we are dealing with are
+very sparse, we were able to parallelize SGD updates across
+multiple users and items. We chose to parallelize over users,
+which in reasonable-sized datasets such as ML-20M, is much
+higher than the number of CUDA cores in modern GPUs. As
+a result, we can utilize our GPUs by choosing a random item
+per user to update.
+We faced a few issues with this approach speciﬁc to GPUs,
+which warranted us to create our own ﬂavor of the parallel
+SGD algorithm (see algorithm 1). The ﬁrst issue we had was
+with multiple updates to the same item. We were running
+atomic operations for the updates to the item matrix, which
+meant that our code was slow, and worse, there were too many
+updates on the most popular items. This led to an overly drastic
+change for the item vectors, making it very hard to balance.
+That is when we decided to get rid of the atomicity and
+have a race condition on the SGD updates, making it so that
+only one update per item would stick, and the previous update
+attempts would be void. We called this version of the algorithm
+Early Bird Loses the Gradient.
+After analyzing our kernel, we noticed that the users with
+higher user ids had lower error than users with lower user ids.
+This was the result of how blocks are scheduled in CUDA:
+blocks with lower block ids (which have the lower user ids)
+get scheduled earlier than higher block ids. As a result, a
+lot of the item updates that were done by earlier users were
+being overwritten, and the algorithm was overﬁtting to the
+later users.
+To combat this issue, we introduced user id striding with
+each iteration. Each thread handles user tid+ (stride
+iters )mod N , wheretidis the thread id and Nis the totalnumber of users. This results in fair item updates with respect
+to the users.
+Another improvement came from not allowing multiple
+updates to the same item, because that results in more global
+memory accesses. For that, we added a binary array of all
+items, and whenever an item is updated, we set its updated
+value to true. Note that this is done with regular checks, not
+a costlyatomicCAS , because it is not a problem if there is
+a race condition and it gets overwritten a couple of times. It
+still is empirically faster, and we call this novel version of the
+algorithm Early Bird Gets the Gradient (EBGTG).
+Also worth mentioning is that we don’t need to compute
+the total loss every iteration. It is an expensive operation, and
+we only do it every couple of iterations to modify the learning
+rate if the SGD has stopped learning. Each thread in the SGD
+kernel just calculates the error for the selected user-item pair,
+resulting in a heavy speedup compared to calculating the error
+on the whole training set.
+C. Data Preparation
+1) Sparse Matrix Representation: For even decently large
+datasets, the full ratings matrix Ris too big to ﬁt in memory.
+This is doubly true when we are dealing with GPU memory,
+as we cannot physically add more memory to a GPU.
+In order to represent the ratings matrix R, we use the
+Compressed Sparse Row (CSR) format. CSR matrices are
+deﬁned by three arrays: indptr ,indices , anddata . The
+item indices for user uare stored in indices [indptr [u] :
+indptr [u+ 1]] and their corresponding ratings are stored in
+data[indptr [u] :indptr [u+ 1]] . This allows for efﬁcient
+indexing into the matrix given a user, which plays into how
+we construct our kernel.
+When representing users with no ratings, we repeat the same
+value in the indptr array, and handle that as a special case in
+our kernel.
+2) Input Data: Our program accepts CSV ﬁles that are
+formatted as userid;itemid;rating tuples, wherein both
+useridanditemidare sequential numerical ids starting
+from 1, and are sorted based on userid. For convenience, we
+provide a script that convert non-sequential ids to sequential
+ids, and a script that sorts the tuples based on userid.
+The program also needs two different ﬁles, one as a training
+set with which the MF model is trained, and a test set with
+which the model is evaluated. We use a completely random
+split across all tuples for generating these ﬁles, and split the
+data into 80% training and 20% test set. We also provide a
+script to split the data.
+D. cu2rec
+The cu2rec code is organized into 3 main parts: reading in
+data into sparse matrix form and moving it to the GPU, using
+SGD and Loss kernels to train the MF model, and moving
+data back to the host in order to write the trained components
+to ﬁles.
+When a user runs cu2rec, they need to supply the train
+and test CSV ﬁles. cu2rec starts by reading both ﬁles into a
+274
+Authorized licensed use limited to: Khulna Univ of Engineering & Technology - KUET. Downloaded on October 04,2025 at 05:52:31 UTC from IEEE Xplore.  Restrictions apply. 
+vector of Rating structs that live in the host memory. It then
+converts each vector of Ratings into a CSR representation.
+Next, it moves these matrices into the GPU’s memory. Once
+the memory allocation is complete, cu2rec then loads in the
+hyper-parameters from a conﬁg ﬁle into constant memory.
+Next, cu2rec calls a train function that is responsible for
+using the sparse rating matrices to train a MF model. train
+starts by initializing all of the components randomly using a
+normal distribution with mean of 0 and standard deviation of
+1. For thePandQmatrices, these values are normalized
+by the number of factors the model will use. Next, all of
+these components are moved to the GPU’s global memory
+using standard CUDA API functions. Each is wrapped in a
+helper function to check for CUDA errors. In addition to
+moving needed memory to the GPU, cu2rec also initializes
+a CUDA Random object and other needed variables to handle
+an adaptive learning rate. Finally, the iterative training of the
+model can begin.
+The main training loop in cu2rec does totalIterations
+loops over two main steps: update components using SGD
+and compute total losses. cu2rec parallelizes over the number
+of users in the matrix for both steps. At the beginning of each
+iteration, the SGD Kernel is called (algorithm 1). Next, the
+algorithm checks if it is time to test the updated model on
+the test ratings (algorithm 2). This is only done periodically,
+as computing the total losses is expensive because it needs
+to compute the error on all ratings, not just one rating per
+user such as in SGD. After computing the new error metrics,
+cu2rec checks to see if the learning rate should be lowered by
+checking a patience counter. Finally, cu2rec swaps the pointers
+of the updated Qwith the old Qand updated itemBias with
+the olditemBias components because we want to use the
+new values for the next round of updating. We do not need
+to keep copies of PanduserBias matrices as the updates
+are simply done on the original matrices. We only keep a
+target version of QanditemBias as updates will have race
+conditions between threads. More is discussed about this in
+the next section, Early Bird Gets the Gradient.
+OncetotalIterations of the training loop are complete, it is
+time to save the trained model and free all necessary memory.
+First, all the trained components are copied back to the host
+variables. Next, the CUDA variables are freed along with all
+host variables that are not part of the trained model. Outside
+of thetrain method, the main code is responsible for writing
+to ﬁle all necessary components of the model that can be
+used to serve recommendations. The necessary components to
+write to ﬁle are: P,Q,userBias ,itemBias , andglobalBias .
+Once all have been written to a ﬁle, cu2rec’s ﬁnal steps are to
+free those variables memories on the host and terminate the
+program.
+1) Early Bird Gets the Gradient: Due to the sequential
+nature of SGD, we had to come up with a technique to
+implement SGD with multiple threads potentially trying to
+update the features of the same item. In SGD, a single error
+is computed for a rating and both the user corresponding to
+that rating and the item have their feature matrices and biasAlgorithm 1 SGD
+1:function SGDK ERNEL
+2:x= (blockDim:xblockIdx:x +threadIdx:x +
+startUser )%nRows
+3:
+4:yi=RANDOM ITEM(x)
+5:
+6:y=indices [yi]
+7:ub=userBias [x]
+8:ib=itemBias [y]
+9:
+10:pred =GETPREDICTION (f;p;q;ub;ib;gb )
+11:error =data[yi] pred
+12:
+13:earlyBird = !itemIsUpdated [y]
+14:itemIsUpdated [y] =true
+15:
+16: fori= 0 tofdo
+17:pIdx =INDEX (x;i;f )
+18:qIdx =INDEX (y;i;f )
+19:pOld =P[pIdx]
+20:qOld =Q[qIdx ]
+21:
+22:P[pIdx] =pOld +(errorqOld ppupOld )
+23:
+24: ifearlyBird then
+25: QTrgt [qIdx ] =qOld +(errorpOld 
+qqiqOld )
+26: end if
+27: end for
+28:
+29:userBias [x] =userBias [x]+(error uUuub)
+30:
+31: ifearlyBird then
+32:itemBiasTrgt [y] =ib+(error iIiib)
+33: end if
+34:end function
+Algorithm 2 Loss
+1:function LOSSKERNEL
+2:x=blockDim:xblockIdx:x +threadIdx:x
+3:
+4:p=P[xf]
+5:ub=userBias [x]
+6:
+7: fori=indptr [x]toindptr [x+ 1] do
+8:itemId =indices [i]
+9:pred =GETPREDICTION (f;p;q;ub;ib;gb )
+10:error [i] =data[i] pred
+11: end for
+12:end function
+weights updated. Because cu2rec parallelizes over users and
+each user picks a random item they have rated, the same item
+vector (especially popular items) is highly likely to be picked
+275
+Authorized licensed use limited to: Khulna Univ of Engineering & Technology - KUET. Downloaded on October 04,2025 at 05:52:31 UTC from IEEE Xplore.  Restrictions apply. 
+Algorithm 3 Prediction
+1:function GETPREDICTION (f;p;q;ub;ib;gb )
+2:pred =gb+ub+ib
+3: fori= 0 tofdo
+4:pred =pred +q[i]p[i]
+5: end for
+6: returnpred
+7:end function
+by multiple threads. The chance of this becomes near certain
+with non-trivial amounts of users and is guaranteed if you have
+more users than items due to the Pigeon Hole principle.
+In order to handle race conditions on the same memory,
+we created the novel Early Bird Gets the Gradient (EBGTG)
+technique. In the SGD Kernel (algorithm 1), each thread picks
+a random item from the user’s rated items. Then, it computes
+the error using the current feature matrices and takes the
+difference with the true rating. Next, it uses this error to update
+all of the features. Updating the Pmatrix and userBias
+values will never have write conﬂicts since each thread is
+responsible for a single user. However, updates to values in
+QanditemBias matrices requires special care.
+In EBGTG, the ﬁrst thread to pick an item wins the race to
+write to that item. To implement this, we created a new boolean
+array,itemIsUpdated , that stores a true or false value for if
+an item’s features have already been updated. When a thread
+selects a random item, they check the value in the array and
+set a localearlyBird variable totrue if they ’won the race.’
+They then set the value for this item to true so other threads
+will set their earlyBird variables to false . Threads then only
+spend time doing fglobal memory writes to Qand one global
+memory write to itemBias [y]. Even if two threads arrive at
+the same time, see itemIsUpdated [i]is false, and both update
+itemi, the last value written is what the value will be with no
+error caused.
+However, it should be noted that due to warp divergence,
+even if a single thread in a warp is selected as the early bird,
+all threads in the warp are blocked until the early bird thread
+is ﬁnished updating QTrgt . Warp divergence is a unwanted
+occurrence in GPUs when branch conditions are introduced
+into kernels. In a GPU, threads are bundled into a group of
+threads, usually 32, that is called a warp. Every thread in a
+warp executes each instruction of a kernel in lockstep. When a
+conditional is reached, the GPU has no choice but to block all
+threads that fail that conditional while all the threads that pass
+it perform all the instructions in that block of code. Then, when
+the conditional ends, all the threads begin again performing the
+remaining instructions in the kernel. Therefore, with EBGTG,
+if a single thread in a warp is the ’early bird’, all other threads
+will be blocked until that single thread does the slow global
+memory writes.
+We were worried at ﬁrst that warp divergence would pre-
+vent any speedup from EBGTG versus Early Bird Loses the
+Gradient, but in empirical testing, we saw a consistent 12-15%
+speedup for the entire program.2) Shared Memory: Earlier versions of cu2rec utilized
+shared memory to store userBias values. Shared memory on
+a GPU is accessible by a single block. Thus, every thread
+in a block can access the same shared memory. When we
+tested usage of shared memory, we used prefetching to load
+userBias values from global memory into shared memory.
+This is done at the start of the kernel. We syncthreads after
+the loading so no threads in the block can start loading values
+from shared memory until all values are loaded in. However,
+we saw a slowdown with prefetching. At ﬁrst, we thought this
+was due to not having enough threads in a block to make use of
+prefetched memory. However, adding more threads per block
+created more of a slowdown than the prefetching of userBias
+values did.
+E. Advanced Techniques
+To optimize run-time and ensure best in class results on test
+sets, cu2rec utilizes multiple advanced techniques. The use of
+constant memory, registers, and an optimized reduction sum
+kernel use the GPU’s architecture to greater advantage. Our
+parallel lock-free updates and user index striding ensure we
+achieve the best results possible against test set ratings.
+1) Constant Memory: All of our kernels rely on many
+of the same static variables, such as hyper-parameters and
+dimensions. These values include total iterations, number of
+factors,,p,q,u, andi.
+The constant memory is useful because from the kernel’s
+point of view, it never changes, and can therefore be aggres-
+sively cached. Because all of the values we store in constant
+memory never change during the execution of cu2rec, all of
+these values get cached in the beginning of execution and
+remain in the cache for the runtime of the program.
+2) Register Utilization: Registers are the fastest memory
+available on the GPU and accesses to this memory can be
+over 100x faster than global memory[4]. As such, one of our
+goals was to use registers to store any values that are used
+more than once in a kernel. We will break down which values
+we decided to store in registers.
+In the SGD Kernel (algorithm 1), the following variables are
+created to store values in registers: x(the user id), low (the
+ﬁrst rated item id index pointer), high (the last rated item id
+index pointer), yi(random item index pointer), y(the item
+id),ub(userx’s bias),ib(itemy’s bias),error (the error of
+the model on the rating of user x on item y), earlyBird (if
+the user is ﬁrst to update item’s features), pOld (old value for
+feature matrix Pat rowxand column i), andqOld (old value
+for feature matrix Qat rowyand column i).
+In the Loss Kernel (algorithm 2), the following variables are
+created to store values in registers: x(the user id), ub(user
+x’s bias), and itemId (the item index for every item xhas
+rated).
+We experimented with having less register use, thinking it
+might allow for more blocks to be scheduled at the same time,
+but that resulted in more global memory accesses (and more
+pressure on the caches), and was overall empirically slower.
+276
+Authorized licensed use limited to: Khulna Univ of Engineering & Technology - KUET. Downloaded on October 04,2025 at 05:52:31 UTC from IEEE Xplore.  Restrictions apply. 
+3) Reduction Sum: The total loss kernel, which is used to
+calculate the global loss after a set number of updates, uses a
+ﬁxed number of threads tgper grid regardless of the number
+of ratings. This makes it easy to scale to very high number
+of ratings (N ). It uses the reduction sum technique, wherein
+each thread at each step calculates a partial sum of its previous
+partial sum and the next thread’s previous partial sum. This is
+done forlog2(N)steps.
+Each thread initially calculates the sum of N=t elements
+sequentially, where each element is tgapart from the previous
+one, allowing coalesced memory accesses. These sums are
+written into the shared memory.
+After this step, each block (size tb) reduces its own sum
+into the sum at tid= 0. This is done for log2(N)steps,
+wherein in the ﬁrst step, the ﬁrst tb=2threads calculate their
+partial some with the sums in tidandtid+tb=2, and then
+tb=4threads, and so on. This approach coalesces the memory
+accesses and minimizes branch divergence. We also use loop
+unrolling to reduce the number of if statements, and also use
+templating with the block size to get rid of the unnecessary
+unrolled checks at compile-time.
+At the end, each thread in the thread block with tid= 0
+writes its own sum to the global memory, so we get a partial
+sum per block. These can be fed into another reduce sum
+kernel, but we found doing the ﬁnal addition on the host was
+faster.
+4) Parallel Lock-Free Updates: As discussed in the section
+explaining Early Bird Gets the Gradient, cu2rec does not lock
+any memory address writes while updating feature matrix
+weights. Earlier versions of cu2rec utilized atomic operations
+to update the QanditemBias matrices. However, after
+discovering that optimal results could be achieved by simply
+letting a single thread ’win’ an update, we decided to remove
+any atomic operations from any kernel.
+5) User Index Striding: EBGTG favors whichever thread
+selects an item ﬁrst and sets the itemIdUpdated value to
+true . Therefore, we must ensure that every thread (and there-
+fore every user) gets a fair shot to be the ’early bird.’ At ﬁrst,
+with naive EBGTG, we were seeing 2-3% worse results on
+error metrics on test data than other implementations. This gap
+in results increased for larger datasets, including almost 8%
+worse results on the Netﬂix Dataset when compared to best in
+class results ([13]). We learned that EBGTG was scheduling
+lower index users ﬁrst since they would always be in the ﬁrst
+few blocks every iteration. While there is no guarantee which
+blocks begin running ﬁrst, there are limited SMs on a GPU
+and therefore some blocks are queued while waiting to run.
+We found that later users would consistently be scheduled to
+higher block indexes, and thus run last.
+In order to combat this, we decided to offset which user each
+thread uses to perform SGD. In the training loop, we add an
+offset variable every iteration and pass that to the SGD kernel
+(algorithm 1). This effect can be seen in the ﬁrst line where
+xis computed. What this offset does is ensure that over time,
+every thread will be responsible for different sections of the
+user matrix.By implementing this striding, we immediately began to see
+equivalent results in test set error metrics compared to other
+well known implementations. As far as we know, there are
+no other GPU implementations that make use of user index
+striding.
+IV. E XPERIMENTAL SETUP
+To test the performance and correctness of cu2rec, we
+compared our implementation against two sequential SGD MF
+implementations.
+The ﬁrst implementation was written by the authors. It is a
+naive algorithm that removes the parallelism over each user in
+the ratings matrix and instead loops over every user for each
+iteration. For each user, a random item that they have rated
+is selected. All other implementation decisions were left as
+close to cu2rec as possible in order to get a fair comparison.
+Of course, EBGTG was removed as the race condition on Q
+anditemBias matrices does not exist in a sequential version
+of SGD.
+The second sequential version of SGD MF was the
+Surprise[9] library, and speciﬁcally, its implementation of the
+biased-SVD MF algorithm[1]. This algorithm also uses SGD
+to learn the same feature matrices as cu2rec. However, this
+implementation uses epochs instead of iterations, where an
+epoch is one pass over all ratings. cu2rec treats an iteration
+as one pass over all users, picking one item at a time. Thus,
+we decided to compare cu2rec with Surprise based on the
+number of updates, and thus ﬂoating point operations, to the
+feature matrices. For cu2rec, each iteration does jUjupdates,
+whereUis the set of all users in the dataset. Surprise does
+jRjupdates per epoch, where Ris the set of all ratings in the
+dataset. Surprise takes in number of epochs to train with while
+cu2rec takes in number of iterations. Therefore, the following
+equation gives us how many epochs to train Surprise with for
+fair comparisons:
+jUjiterations =jRjepochs (10)
+All 3 implementations were tested on three datasets,
+MovieLens-100k, MovieLens-20M, and Goodreads-
+105M[17]. The MovieLens datasets have been a standard
+for comparison of recommender systems for a while, but
+they are still quite limited in scale. We therefore also opted
+to use the Goodreads-105M dataset introduced by Wan and
+McAuley [17], which features around 105 million ratings by
+808,749 users on 1,561,465 items. We also opted not to run
+our sequential implementation on Goodreads-105M due to
+time constraints.
+Each implementation was trained using 1000, 5000, and
+10000 iterations (for MovieLens-100k and Goodreads-105M)
+and 100, 500, 1000, and 5000 iterations (for MovieLens-20M).
+For each implementation and each experiment of iiterations,
+we use 50 and 300 factors.
+For each experiment, we capture the total time taken for
+the program to run and the ﬁnal Root Mean Squared Error
+(RMSE) on the test set.
+277
+Authorized licensed use limited to: Khulna Univ of Engineering & Technology - KUET. Downloaded on October 04,2025 at 05:52:31 UTC from IEEE Xplore.  Restrictions apply. 
+RMSE =r
+1
+nn
+i=1(Ri ^Ri)2 (11)
+Each implementation is trained on 80% of the full dataset
+and 20% is held out for a test set. No ratings from the test
+set are ever using in any feature matrix weight updates. Each
+dataset is shufﬂed using the Python scripts discussed in the
+Implementation section of this paper. Each implementation is
+given the same train and test set so that no randomness in the
+split affects ﬁnal RMSE.
+We tested each implementation with with same hyper-
+parameters.
+= 0:01
+p= 0:02
+q= 0:02
+u= 0:02
+i= 0:02
+V. R ESULTS
+We benchmarked our GPU code using an NVIDIA V100
+GPU, and the CPU code with an Intel i7-6650U CPU.
+Tables I, II, and III show the times and RMSE on
+MovieLens-100k, MovieLens-20M, and Goodreads-105M
+dataset respectively.
+Figures 2, 4, and 6 show the ﬁnal test RMSE on MovieLens-
+100k, MovieLens-20M, and Goodreads-105M dataset respec-
+tively.
+Figures 3, 5, and 7 shows the graph of the total times of all
+implementations on MovieLens-100k, MovieLens-20M, and
+Goodreads-105M dataset respectively.
+TABLE I
+MOVIE LENS 100 K- TOTAL TIME AND TESTRMSE SGD MF
+IMPLEMENTATIONS
+ALGORITHM ITERS F TEST RMSE T OTAL TIME
+CU2REC (GPU) 1000 50 .9077 0.65 S
+300 .9076 1.78 S
+5000 50 .8946 0.75 S
+300 .8873 2.30 S
+10000 50 .8945 0.87 S
+300 .8788 2.95 S
+CU2REC (CPU) 1000 50 .9061 11.2 S
+300 .8907 14.3 S
+5000 50 .9041 58.2 S
+300 .8747 69.7 S
+10000 50 .9054 114.0 S
+300 .8695 143.2 S
+SURPRISE 1000 50 .9078 1.4S
+300 .8724 5.38 S
+5000 50 .9305 5.98 S
+300 .8545 24.4 S
+10000 50 .9237 11.2 S
+300 .8608 48.8 S
+Fig. 2. Comparison of RMSE on ML-100k
+Fig. 3. Comparison of total time on ML-100k
+TABLE II
+MOVIE LENS 20M - T OTAL TIME AND TESTRMSE SGD MF
+IMPLEMENTATIONS
+ALGORITHM ITERS F TEST RMSE T OTAL TIME
+CU2REC (GPU) 100 50 .9004 11.1 S
+300 .8999 29.2 S
+500 50 .8678 11.5 S
+300 .8679 37.7 S
+1000 50 .8663 12.6 S
+300 .8664 48.6 S
+5000 50 .8417 21.6 S
+300 .8044 137.0 S
+CU2REC (CPU) 100 50 .8642 265.6 S
+300 .8583 350.1 S
+500 50 .8738 1282.7 S
+300 NA1NA1
+1000 50 NA1NA1
+300 NA1NA1
+SURPRISE 100 50 .8613 329.1 S
+300 .8743 721.8 S
+500 50 .8791 487.6 S
+300 .8342 1075.8 S
+1000 50 .8023 694.6 S
+300 .8004 1474.8 S
+INDICATES THAT PROGRAM WAS INFEASIBLE TO RUN1
+A. GPU vs GPU comparison
+We tested our code both with a V100 on NYU’s Prince
+server, and a TITAN Z in NYU’s cuda2 server. We varied
+problem sizes, the memory bandwidth requirements, and the
+278
+Authorized licensed use limited to: Khulna Univ of Engineering & Technology - KUET. Downloaded on October 04,2025 at 05:52:31 UTC from IEEE Xplore.  Restrictions apply. 
+Fig. 4. Comparison of RMSE on ML-20M
+Fig. 5. Comparison of total time on ML-20M
+TABLE III
+GOODREADS 105M - T OTAL TIME AND TESTRMSE SGD MF
+IMPLEMENTATIONS
+ALGORITHM ITERS F TEST RMSE T OTAL TIME
+CU2REC (GPU) 100 50 .8731 10.30 S
+300 .8728 59.17 S
+500 50 .8505 33.70 S
+300 .8507 245.86 S
+1000 50 .8494 63.94 S
+300 .8499 485.29 S
+5000 50 .8454 305.65 S
+300 .8210 2,393.39 S
+10000 50 .8463 608.15 S
+300 .8168 4,782.57 S
+SURPRISE 100 50 .8666 746.50 S
+300 .8724 1,348.50 S
+500 50 .8436 1,339.70 S
+300 .8426 3,630.30 S
+1000 50 .8238 2,289.50 S
+300 .8267 8,063.30 S
+5000 50 .8481 11,321.40 S
+300 .8262 30,733.10 S
+10000 50 NA1NA1
+300 NA1NA1
+INDICATES THAT PROGRAM WAS INFEASIBLE TO RUN1
+number of iterations to get a healthy comparison. This is
+visualized in ﬁgure 8.
+The V100 has 5,120 CUDA cores vs 5,760 of TITAN Z,
+900GB/s memory bandwidth vs 672GB/s of TITAN Z, and
+Fig. 6. Comparison of RMSE on Goodreads-105M
+Fig. 7. Comparison of total time on Goodreads-105M
+Fig. 8. Comparison of speedup on different problem sizes
+higher clock speed.
+In terms of the cost in performance, going from the ML-
+100k to ML-20M dataset increases the total problem size, as
+there are more users, items, and ratings to train for. Holding
+all other things equal, we would expect a scalable code to
+have higher speedup with larger problem size, and our speedup
+satisﬁes this.
+In terms of bandwidth requirement, increasing the number
+of factors from 50 to 300 has a direct effect on it, because
+the SGD kernel needs to retrieve more data from the global
+memory. Holding all other things equal, we would expect a
+scalable code to have higher speedup with increased memory
+bandwidth, and our speedup satisﬁes this.
+Note that we do not utilize the tensor cores found in the
+V100 (in fact, we compile for compute capability 3.5).
+279
+Authorized licensed use limited to: Khulna Univ of Engineering & Technology - KUET. Downloaded on October 04,2025 at 05:52:31 UTC from IEEE Xplore.  Restrictions apply. 
+B. CuMF-ALS
+CuMF-ALS[14] does not give a general purpose script to
+convert data into a format that is readable by their program, so
+we had to use the data that they provide in order to test their
+code. The link to download the Netﬂix data[3] doesn’t work,
+but we were able to get it through their other repo. Using the
+command line options and hyper-parameters in their readme,
+we were able to run the code and get similar error metrics (0.91
+RMSE) to the paper. However, the command line options they
+give mixes up the number of users and the number of items,
+and the program failed to run when this error was corrected.
+Therefore, we could not verify the accuracy of their claims.
+We tried the MovieLens[8] datasets, speciﬁcally the
+MovieLens-10M dataset as it is one of their preferred datasets.
+However, MovieLens-10M produced NaN results, and when
+the option to suppress NaN s was used, the training set
+RMSE started with 1.56 in the ﬁrst iteration, increased to
+3.58, and stayed there.
+C. CuMF-SGD
+CuMF-SGD[13] was easier to work with, and accepted
+our training datasets. However, it did not output any error
+metrics, meaning we had to rely on the metrics in the paper,
+which produces a similar result to CuMF-ALS on Netﬂix data.
+The paper does not provide any error metrics on MovieLens
+datasets, which is the primary dataset we use to benchmark
+our results.
+D. Implicit
+Implicit[15], as mentioned in related work, uses implicit
+ratings and uses accuracy (whether a user has consumed an
+item or not) as its error metric. Attempting to convert all
+explicit ratings to implicit ratings of 1 (consumed) creates an
+interesting dilemma wherein all of the training and test ratings
+are 1, and therefore, a model that only predicts 1 would have
+a perfect (0) RMSE. When we tried this approach, we were
+indeed able to get a very low RMSE.
+The only other option is to have a cutoff point for consump-
+tion, wherein high ratings would get 1 and low ratings would
+get 0, and we would still keep these 0 ratings in our training
+and test sets. That, however, goes against the spirit of implicit
+ratings.
+Because we explicitly optimize for RMSE, it doesn’t make
+sense for us to calculate implicit error metrics. Therefore, we
+couldn’t ﬁnd a valid way of comparing our work.
+VI. C ONCLUSION
+GPU technology opens the door to massive acceleration for
+a wide variety of problems. Machine Learning has recently
+seen a massive boost in effectiveness from both powerful
+GPUs and the availability of big data to train complex
+models on. Recommender Systems are an interesting subset
+of machine learning as they beneﬁt greatly from larger and
+larger datasets that allow models to uncover complex latent
+relationships between users and items. SGD is one of the mostpopular algorithms to optimize recommender system MF mod-
+els. However, SGD provides a challenging problem for GPU
+implementations due to its inherent sequential deﬁnition[14].
+This paper introduced cu2rec, a novel parallel implementa-
+tion of SGD used to solve recommender system matrix factor-
+ization. Through the use of a parallel lock free SGD kernel and
+a variety of advanced CUDA programming techniques, cu2rec
+achieves a 10x speedup over one of the fastest sequential
+recommender system MF libraries while matching best in
+class error metrics. In addition to outperforming sequential
+implementations of SGD MF, cu2rec has also been shown to
+scale with better GPU hardware.
+A. Future Work
+In the future, we plan to improve the parallelization capabil-
+ity of our program by allowing multi-GPU support. Similarly,
+we plan to add support for extra large datasets through the
+use of tiling, with overlapping communication and execution
+through the use of streams. We also plan to make more use
+of CUDA streams, such as overlapping the calculation of the
+two total loss metrics with execution of SGD.
+The use of half precision ﬂoating points or unsigned inte-
+gers instead of ﬂoating points has been known to speed up
+execution massively[13]. That is one area that we expect to
+give us a major increase in speed.
+Lastly, we saw that GPU implementations of MF[14][15]
+parallelize over the factors instead of users. That paralleliza-
+tion requires more advanced kernels and would require a
+rework of the EBGTG (1) algorithm. However, it is an avenue
+we want to keep exploring.
+1) Algorithms: Alternating Least Squares[16] is a different
+way of training a MF model that does not result in race condi-
+tions even in a parallel implementation because it only updates
+one matrix at a time. It is therefore easy to parallelize[14], but
+SGD has higher potential for ﬁner-grained parallelism[11].
+We would also like to try out implicit ratings, as they are
+the de-facto industry standard for recommender systems. That
+is because users rarely interact with items that they know they
+are not going to like, bringing the average ratings up so high
+that their average ratings center around 4/5. That would require
+us to use a different loss function and different error metrics.
+We also want to explore different gradient descent opti-
+mizers, such as Adam[18] or the newer AdamW[19]. The
+downside of these optimizers is keeping track of the momen-
+tum terms for each trainable parameter, doubling the memory
+necessary to hold the matrices.
+REFERENCES
+[1] Y . Koren, R. Bell, and C. V olinsky, “Matrix factorization techniques for
+recommender systems,” Computer, no. 8, pp. 30–37, 2009.
+[2] A. Bari, M. Chaouchi, and T. Jung, Predictive analytics for dummies.
+John Wiley & Sons, 2016.
+[3] Y . Koren, “The bellkor solution to the netﬂix grand prize,” Netﬂix prize
+documentation, vol. 81, pp. 1–10, 2009.
+[4] D. B. Kirk and W. H. Wen-Mei, Programming massively parallel
+processors: a hands-on approach. Morgan kaufmann, 2016.
+280
+Authorized licensed use limited to: Khulna Univ of Engineering & Technology - KUET. Downloaded on October 04,2025 at 05:52:31 UTC from IEEE Xplore.  Restrictions apply. 
+[5] A. Coates, B. Huval, T. Wang, D. Wu, B. Catanzaro, and N. Andrew,
+“Deep learning with cots hpc systems,” in International Conference on
+Machine Learning, 2013, pp. 1337–1345.
+[6] S. Funk, “Netﬂix update: Try this at home,” December 2006,
+[Online; posted December 11, 2006]. [Online]. Available: http:
+//sifter.org/simon/journal/20061211.html
+[7] G. H. Golub and C. Reinsch, “Singular value decomposition and least
+squares solutions,” Numerische mathematik, vol. 14, no. 5, pp. 403–420,
+1970.
+[8] F. M. Harper and J. A. Konstan, “The movielens datasets: History and
+context,” ACM Trans. Interact. Intell. Syst., vol. 5, no. 4, pp. 19:1–19:19,
+Dec. 2015.
+[9] N. Hug, “Surprise, a Python library for recommender systems,” http:
+//surpriselib.com, 2017.
+[10] B. Recht, C. Re, S. Wright, and F. Niu, “Hogwild: A lock-free approach
+to parallelizing stochastic gradient descent,” in Advances in neural
+information processing systems, 2011, pp. 693–701.
+[11] H. Yun, H. Yu, C. Hsieh, S. V . N. Vishwanathan, and I. S.
+Dhillon, “NOMAD: non-locking, stochastic multi-machine algorithm
+for asynchronous and decentralized matrix completion,” CoRR, vol.
+abs/1312.0193, 2013. [Online]. Available: http://arxiv.org/abs/1312.0193[12] Y . Low, D. Bickson, J. Gonzalez, C. Guestrin, A. Kyrola, and J. M.
+Hellerstein, “Distributed graphlab: a framework for machine learning
+and data mining in the cloud,” Proceedings of the VLDB Endowment,
+vol. 5, no. 8, pp. 716–727, 2012.
+[13] X. Xie, W. Tan, L. L. Fong, and Y . Liang, “Cumf sgd: Fast
+and scalable matrix factorization,” CoRR, vol. abs/1610.05838, 2016.
+[Online]. Available: http://arxiv.org/abs/1610.05838
+[14] W. Tan, L. Cao, and L. L. Fong, “Faster and cheaper: Parallelizing
+large-scale matrix factorization on gpus,” CoRR, vol. abs/1603.03820,
+2016. [Online]. Available: http://arxiv.org/abs/1603.03820
+[15] B. Frederickson, “Fast python collaborative ﬁltering for implicit feed-
+back dataset,” https://github.com/benfred/implicit, 2016.
+[16] G. Tak ´acs, I. Pil ´aszy, and D. Tikk, “Applications of the conjugate
+gradient method for implicit feedback collaborative ﬁltering,” in RecSys,
+2011.
+[17] M. Wan and J. McAuley, “Item recommendation on monotonic behavior
+chains,” in Proceedings of the 12th ACM Conference on Recommender
+Systems. ACM, 2018, pp. 86–94.
+[18] D. P. Kingma and J. Ba, “Adam: A method for stochastic optimization,”
+arXiv preprint arXiv:1412.6980, 2014.
+[19] I. Loshchilov and F. Hutter, “Fixing weight decay regularization in
+adam,” arXiv preprint arXiv:1711.05101, 2017.
+281
+Authorized licensed use limited to: Khulna Univ of Engineering & Technology - KUET. Downloaded on October 04,2025 at 05:52:31 UTC from IEEE Xplore.  Restrictions apply. 

@@ -1,0 +1,1278 @@
+\documentclass[12pt,a4paper]{article}
+
+\usepackage[margin=2.5cm]{geometry}
+\usepackage{amsmath, amssymb, amsthm}
+\usepackage{booktabs}
+\usepackage{array}
+\usepackage{tabularx}
+\usepackage{enumitem}
+\usepackage{xcolor}
+\usepackage{titlesec}
+\usepackage{parskip}
+\usepackage{fancyhdr}
+\usepackage{hyperref}
+\usepackage{tcolorbox}
+\usepackage{mathtools}
+\usepackage{bm}
+
+% Colors
+\definecolor{sectioncolor}{RGB}{180,0,0}
+\definecolor{boxbg}{RGB}{245,245,245}
+\definecolor{boxframe}{RGB}{180,0,0}
+\definecolor{notebg}{RGB}{255,250,235}
+\definecolor{noteborder}{RGB}{200,150,0}
+
+% Section formatting
+\titleformat{\section}{\large\bfseries\color{sectioncolor}}{}{0em}{}[\vspace{0.2em}{\color{sectioncolor}\hrule height 1pt}]
+\titleformat{\subsection}{\normalsize\bfseries}{}{0em}{}
+\titleformat{\subsubsection}{\normalsize\itshape}{}{0em}{}
+
+% Header/footer
+\pagestyle{fancy}
+\fancyhf{}
+\rhead{\textit{Imran Sir --- ML Notes by Hanium}}
+\lhead{}
+\rfoot{\thepage}
+\renewcommand{\headrulewidth}{0.4pt}
+
+% Box environments
+\tcbuselibrary{skins, breakable}
+\newtcolorbox{definitionbox}[1][]{
+  colback=boxbg, colframe=boxframe,
+  fonttitle=\bfseries, title=#1,
+  breakable, left=6pt, right=6pt, top=4pt, bottom=4pt
+}
+\newtcolorbox{examplebox}{
+  colback=notebg, colframe=noteborder,
+  fonttitle=\bfseries, title=Example,
+  breakable, left=6pt, right=6pt, top=4pt, bottom=4pt
+}
+\newtcolorbox{notebox}{
+  colback=notebg, colframe=noteborder,
+  breakable, left=6pt, right=6pt, top=4pt, bottom=4pt
+}
+
+\newcommand{\keyword}[1]{\textbf{#1}}
+\newcommand{\algo}[1]{\textbf{\textit{#1}}}
+
+\title{\Huge\bfseries\color{sectioncolor} Machine Learning Notes\\[0.3em]
+       \large\normalfont\color{black} Imran Sir \quad $\bullet$ \quad Written by Hanium}
+\date{}
+
+\begin{document}
+\maketitle
+\tableofcontents
+\newpage
+
+%==============================================================
+\section{K-Means Clustering}
+%==============================================================
+
+\begin{definitionbox}[Definition]
+K-Means is an \keyword{unsupervised iterative clustering technique}. A \keyword{cluster} is defined as a collection of data points exhibiting certain similarities.
+\end{definitionbox}
+
+\subsection{Steps}
+\begin{enumerate}[leftmargin=*, label=\textbf{Step \arabic*.}]
+  \item Choose the number of clusters $k$.
+  \item Randomly select any $k$ data points as \textbf{cluster centers}.
+  \item Calculate the distance between each data point and each cluster center.
+  \item Assign each data point to the nearest cluster (nearest center).
+  \item Re-compute the center of each newly formed cluster.
+  \item Repeat Steps 3--5 until one of the following stopping conditions is met:
+        \begin{itemize}
+          \item Centers of new clusters do not change.
+          \item Data points remain in the same cluster.
+          \item Maximum iteration number is reached.
+        \end{itemize}
+\end{enumerate}
+
+\subsection{Advantages}
+\begin{itemize}
+  \item Iteratively efficient: $O(nkt)$, where $n$ = points, $k$ = clusters, $t$ = iterations.
+  \item Often terminates at local optimum.
+\end{itemize}
+
+\subsection{Disadvantages}
+\begin{itemize}
+  \item Sensitive to outliers.
+  \item Requires the number of clusters $k$ to be specified in advance.
+  \item Cannot handle noisy data and outliers well.
+  \item Not suitable for non-convex shapes.
+  \item Random centroid choosing may give poor results.
+\end{itemize}
+
+\subsection{Example}
+
+\begin{examplebox}
+Data points: $2, 4, 6, 10, 12, 14$ \quad (1-D)\par
+Let $k = 2$, initial centroids: $C_1 = 4$, $C_2 = 12$.
+
+\vspace{0.5em}
+\textbf{Iteration 1 --- Assignment:}
+\begin{center}
+\begin{tabular}{cccc}
+\toprule
+Point & dist from $C_1$ & dist from $C_2$ & Cluster \\
+\midrule
+2 & 2 & 10 & $C_1$ \\
+4 & 0 & 8  & $C_1$ \\
+6 & 2 & 6  & $C_1$ \\
+10 & 6 & 2 & $C_2$ \\
+12 & 8 & 0 & $C_2$ \\
+14 & 10 & 2 & $C_2$ \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+Cluster 1: $\{2,4,6\}$, Cluster 2: $\{10,12,14\}$
+
+\textbf{Update centroids:}
+\[
+C_1 = \frac{2+4+6}{3} = 4, \qquad C_2 = \frac{10+12+14}{3} = 12
+\]
+Centroids unchanged $\Rightarrow$ \textbf{Converged.}
+\end{examplebox}
+
+%==============================================================
+\section{Finding the Value of \texorpdfstring{$k$}{k} --- Elbow Method}
+%==============================================================
+
+\begin{definitionbox}[WCSS --- Within Cluster Sum of Squares]
+For each $k$, we compute:
+\[
+\text{WCSS} = \sum_{C_k} \sum_{d_i \in C_k} \bigl(\text{dist}(d_i, C_k)\bigr)^2
+\]
+where $C_k$ is the cluster centroid and $d_i$ are data points in each cluster.
+\end{definitionbox}
+
+Plot WCSS vs.\ $k$. The \textbf{elbow point} (where the rate of decrease slows sharply) gives the optimal $k$.
+
+\[
+\text{WCSS (example values): } 8000, 7000, 6000, 5000, \ldots
+\]
+
+\subsection{Problems with the Elbow Method} \quad \textit{[Complexity: $O(nkd)$]}
+
+\begin{itemize}
+  \item The lower the WCSS, the better the clustering --- but this is \textbf{not always true}.
+  \item If $k$ is very large, WCSS will be reduced but clustering is not good at all. In the extreme case it becomes one cluster per point.
+  \item \textbf{That's why the Silhouette Coefficient is preferred over the Elbow method.}
+  \item Comparison: Elbow method complexity $= O(nkd)$; Silhouette $= \dfrac{n^2d}{nkd} = \dfrac{1}{k}$ times $\Rightarrow$ silhouette is better.
+\end{itemize}
+
+%==============================================================
+\section{Silhouette Method}
+%==============================================================
+
+\begin{definitionbox}[Silhouette Method]
+Used to find how good the clustering is, and to choose the best value of $k$ in K-Means. It checks:
+\begin{itemize}
+  \item How close a point is to its own cluster.
+  \item How far it is from other clusters.
+  \item Complexity: $O(n^2 k)$.
+\end{itemize}
+\end{definitionbox}
+
+\subsection{Silhouette Coefficient Formula}
+
+\[
+\boxed{S(i) = \frac{b(i) - a(i)}{\max\{a(i),\, b(i)\}}, \qquad -1 \leq S \leq 1}
+\]
+
+where:
+\begin{align*}
+a(i) &= \text{average distance from point } i \text{ to other points in the \textbf{same} cluster} \\
+b(i) &= \text{average distance from point } i \text{ to points in the \textbf{nearest other} cluster}
+\end{align*}
+
+\subsection{Interpretation Table}
+
+\begin{center}
+\begin{tabular}{cc}
+\toprule
+$S$ value & Interpretation \\
+\midrule
+$+1$ (near) & Good clustering \\
+$0$         & Overlapping clusters \\
+$-1$        & Wrong cluster assignment \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+\subsection{Example}
+
+\begin{examplebox}
+Two clusters: $A = \{A_1(1,1),\; A_2(2,1),\; A_3(1,2),\; A_4(2,2)\}$,\quad $B = \{B_1(8,8),\; B_2(9,8),\; B_3(8,9),\; B_4(9,9)\}$
+
+\textbf{Step 1:} Choose point $P = A_1 = (1,1)$.
+
+\textbf{Step 2:} Calculate $a(i) = a(P) = a(1,A)$ (average distance to other 3 points in $A$):
+\[
+a_i = \frac{d_{12} + d_{13} + d_{14}}{3} = \frac{1 + 1 + \sqrt{2}}{3} \approx 1.14
+\]
+
+\textbf{Step 3:} Calculate $b(i)$ --- average distance to all 4 points in nearest other cluster $B$:
+\[
+b(i) = \frac{d_{11}+d_{12}+d_{13}+d_{14}}{4} \approx 10.62
+\]
+
+\textbf{Step 4:}
+\[
+S(i) = \frac{b(i) - a(i)}{\max\{a(i), b(i)\}} = \frac{10.62 - 1.14}{10.62} \approx 0.89 \quad \text{(very good clustering)}
+\]
+\end{examplebox}
+
+%==============================================================
+\section{K-Means++ Clustering}
+%==============================================================
+
+\begin{definitionbox}[K-Means++]
+An \textbf{improved version} of K-Means clustering. K-Means chooses centroids randomly, which may lead to poor clustering. K-Means++ chooses \textbf{better initial centroids}.
+
+\[
+P(x_i) = \frac{D(x_i)}{\sum D(x_i)}
+\]
+where $D(x_i)$ is the squared distance from point $x_i$ to the nearest already-chosen centroid.
+\end{definitionbox}
+
+\subsection{Why K-Means++ is Probabilistic}
+
+\[
+P(x_i) = \frac{D(x_i)}{\sum D(x_i)} \qquad \text{(probabilistic / random feature)}
+\]
+
+K-Means++ chooses the first centroid randomly, then subsequent centroids probabilistically. So different runs may produce different centroids and clusters. This helps avoid:
+\begin{itemize}
+  \item Bad initialization
+  \item Local minima
+  \item Biased centroid selection
+\end{itemize}
+
+\subsubsection{What if deterministic?}
+\begin{enumerate}
+  \item Can get stuck in poor solution.
+  \item Centroids will be wasted on noisy data (a noisy point would become a centroid if deterministic, but probabilistically this is unlikely).
+  \item The same centroid won't be chosen again because $P(\text{already chosen}) = 0$ (from the equation).
+\end{enumerate}
+
+\subsection{Example --- K-Means++ with $k=2$}
+
+\begin{examplebox}
+Points: $(1,1),(2,1),(1,2),(2,2),(8,8),(8,9),(9,8),(9,9)$, $k=2$.
+
+\textbf{Step 1:} Choose first centroid randomly: $C_1 = (1,1)$.
+
+\textbf{Step 2:} Compute $D(x_i) = \|x_i - C_1\|^2$:
+\begin{center}
+\begin{tabular}{cc}
+\toprule
+Point & $D(x_i)$ \\
+\midrule
+$(1,1)$ & 0 \\
+$(2,1)$ & 1 \\
+$(1,2)$ & 1 \\
+$(2,2)$ & 2 \\
+$(8,8)$ & 98 \\
+$(8,9)$ & 113 \\
+$(9,8)$ & 113 \\
+$(9,9)$ & 128 \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+$\sum D(x_i) = 456$. Points far away have higher probability.
+\[
+p = \frac{D(x_i)}{\sum D(x_i)}
+\]
+Maximum probability at $(9,9)$, so $C_2 = (9,9)$.
+
+\textbf{Step 4:} Repeat K-Means algorithm with these two good centroids.
+\end{examplebox}
+
+\subsection{Example --- K-Means++ with $k=3$}
+
+\begin{examplebox}
+Points: $(1,1),(2,1),(1,2),(2,2),(8,8),(9,8),(8,9),(20,20),(21,20),(20,21)$, $k=3$.
+
+\textbf{Step 1:} Randomly choose $C_1 = (1,1)$. Compute $D(x_i)$.
+Last three points have highest squared distances: $(20,20)\to 722$, $(21,20)\to 761$, $(20,21)\to 761$.
+
+Let $C_2 = (20,20)$.
+
+\textbf{Step 2:} Find third centroid. Now $D(x) = \min(d(x,C_1),\; d(x,C_2))$:
+\begin{center}
+\begin{tabular}{cccc}
+\toprule
+Point & $d(x,C_1)$ & $d(x,C_2)$ & $D$ \\
+\midrule
+$(1,1)$ & 0 & 722 & 0 \\
+$(2,1)$ & 1 & 685 & 1 \\
+$(1,2)$ & 1 & 685 & 1 \\
+$(2,2)$ & 2 & 648 & 2 \\
+$(8,8)$ & 98 & 288 & 98 \\
+$(8,9)$ & 113 & 265 & 113 \\
+$(9,8)$ & 113 & 265 & 113 \\
+$(20,20)$ & 722 & 0 & 0 \\
+$(21,20)$ & 761 & 1 & 1 \\
+$(20,21)$ & 761 & 1 & 1 \\
+\bottomrule
+\end{tabular}
+\end{center}
+Higher probabilities at $(8,8),(8,9),(9,8)$. Let $C_3 = (8,8)$.
+
+\textbf{Step 3:} Run K-Means algorithm.
+\end{examplebox}
+
+\subsection{Advantages and Disadvantages of K-Means++}
+
+\begin{minipage}[t]{0.48\textwidth}
+\textbf{Advantages:}
+\begin{itemize}
+  \item Better initial centroids
+  \item Lower WCSS
+  \item Less computation
+  \item Probabilistic (different solutions in different approaches)
+\end{itemize}
+\end{minipage}
+\hfill
+\begin{minipage}[t]{0.48\textwidth}
+\textbf{Disadvantages:}
+\begin{itemize}
+  \item Chance of getting stuck in local minima
+\end{itemize}
+\end{minipage}
+
+%==============================================================
+\section{Genetic Algorithm (for K-Means)}
+%==============================================================
+
+\begin{definitionbox}[Genetic Algorithm]
+The local-minima problem of K-Means (and K-Means++) can be solved using a Genetic Algorithm.
+\end{definitionbox}
+
+\subsection{Steps}
+
+\begin{enumerate}[leftmargin=*, label=\textbf{\arabic*.}]
+  \item \textbf{Initial Population:}
+        We need a \textbf{solution set} (e.g.\ 20 solutions total):
+        \[
+        [l_1, l_3, l_5],\quad [l_2, l_4, l_8], \ldots
+        \]
+        To make the solution set, run K-Means algorithm 20\%. Others are made randomly.
+
+  \item \textbf{Selection:}
+        \begin{itemize}
+          \item Define \textbf{fitness}: lower WCSS $\Rightarrow$ better solution.
+          \item For betterment, first run K-Means, then WCSS.
+          \item Methods: Roulette wheel, Tournament selection.
+        \end{itemize}
+
+  \item \textbf{Mutation:}
+        \begin{itemize}
+          \item Randomly modify centroid.
+          \item We choose the point for mutation which is causing larger WCSS.
+        \end{itemize}
+
+  \item \textbf{Elitism:}
+        \begin{itemize}
+          \item Will store the best solutions.
+        \end{itemize}
+\end{enumerate}
+
+%==============================================================
+\section{Non-Convex Data Clustering}
+%==============================================================
+
+K-Means relies on Euclidean distance to assign points to the nearest centroid. However, it cannot perfectly partition non-convex data:
+\begin{itemize}
+  \item It splits a single continuous non-convex cluster into multiple \textbf{artificial convex regions}.
+  \item It merges separate but interleaved non-convex structures into a single incorrect group.
+\end{itemize}
+
+\textbf{That's why we use DB-SCAN.}
+
+%==============================================================
+\section{DBSCAN}
+%==============================================================
+
+\begin{definitionbox}[DBSCAN --- Density-Based Spatial Clustering of Applications with Noise]
+\begin{itemize}
+  \item A clustering algorithm that groups points \textbf{based on density}.
+  \item Works for non-convex shapes. \hfill \textit{(Solves two problems)}
+  \item Detects outliers on noisy data points.
+  \item \textbf{Two parameters:}
+        \begin{enumerate}
+          \item $\varepsilon$ (epsilon): radius around a point.
+          \item \texttt{minPts}: minimum points needed to form a region ($= 2d$, where $d$ = dimensions).
+        \end{enumerate}
+\end{itemize}
+\end{definitionbox}
+
+\subsection{Three Types of Points}
+\begin{enumerate}
+  \item \textbf{Core}: has $\geq \texttt{minPts}$ within $\varepsilon$.
+  \item \textbf{Border}: does not have \texttt{minPts} neighbors, but is within $\varepsilon$ of a core point.
+  \item \textbf{Noise}: not close enough to any dense point.
+\end{enumerate}
+
+\subsection{Example}
+
+\begin{examplebox}
+Points: $(1,1),(1,2),(2,1),(2,2),(8,8),(8,9),(9,8),(9,9),(20,20),(25,25)$\\
+$\texttt{minPts} = 2 \times 2 = 4$
+
+\textbf{Distance matrix} (10$\times$10 shown partially):
+
+\begin{center}
+\begin{tabular}{c|cccccccccc}
+ & p1 & p2 & p3 & p4 & p5 & p6 & p7 & p8 & p9 & p10 \\
+\hline
+p1 & 0 & 1 & 1 & 1.41 & \textbf{9.9} & 10.63 & 10.63 & 11.31 & 26.9 & 33.9 \\
+p2 & 1 & 0 & 1.41 & 1 & \textbf{9.22} & 9.9 & 10 & 10.63 & 26.17 & 33.24 \\
+p3 & 1 & 1.41 & 0 & 1 & \textbf{9.21} & 10 & 9.9 & 10.63 & 26.17 & 33.24 \\
+p4 & 1.41 & 1 & 1 & 0 & \textbf{8.5} & 9.22 & 9.22 & 9.9 & 25.5 & 32.5 \\
+p5 & 9.9 & 9.22 & 9.21 & 8.5 & 0 & 1 & 1 & 1.41 & 16.9 & \textbf{8.24} \\
+p6 & 10.63 & 9.9 & 10 & \textbf{9.22} & 1 & 0 & 1.41 & 1 & 16.3 & 23.3 \\
+p7 & 10.63 & 10 & 9.9 & \textbf{9.22} & 1 & 1.41 & 0 & 1 & 16.24 & 23.3 \\
+p8 & 11.31 & 10.63 & 10.63 & \textbf{9.9} & 1.41 & 1 & 1 & 0 & 6.63 & 22.63 \\
+p9 & 26.9 & 26.17 & 26.17 & 25.5 & 16.9 & 16.3 & 16.24 & 6.63 & 0 & 7.07 \\
+p10 & 33.9 & 33.24 & 33.24 & 32.5 & 8.24 & 23.3 & 23.3 & 22.63 & 7.07 & 0 \\
+\end{tabular}
+\end{center}
+
+\textbf{$\varepsilon$-determination:} For each point, sort distances; the ``elbow'' value gives $\varepsilon$.
+
+Sorted (4th-nearest distances): $8.24, 8.5, 9.21, 9.22, 9.22, 9.22, 9.9, 9.9, 16.3, 23.3$
+
+The elbow occurs at $\varepsilon \approx 9.22$.
+
+\textbf{Considering $\varepsilon = 9.22$:}
+\begin{itemize}
+  \item p1: neighbors $\{$p2, p3, p4, p5$\}$ $\to$ \textbf{Core}
+  \item p2: neighbors $\{$p1, p4, p3, p5, p6$\}$ $\to$ \textbf{Core}
+  \item p3: neighbors $\{$p1, p2, p4, p5, p7$\}$ $\to$ \textbf{Core}
+  \item p4: neighbors $\{$p1, p2, p3, p5, p6, p7$\}$ $\to$ \textbf{Core}
+  \item p5: neighbors $\{$p1, p2, p3, p4, p6, p7, p8, p10$\}$ $\to$ \textbf{Core}
+  \item p6: neighbors $\{$p2, p4, p5, p7, p8$\}$ $\to$ \textbf{Core}
+  \item p7: neighbors $\{$p3, p4, p5, p6, p8$\}$ $\to$ \textbf{Core}
+  \item p8: neighbors $\{$p4, p5, p6, p7, p9$\}$ $\to$ \textbf{Core}
+  \item p9: neighbors $\{$p5, p6$+1, p10$\}$ $\to$ \textbf{Border}
+  \item p10: neighbors $\{$p5, p9$\}$ $\to$ \textbf{Border}
+\end{itemize}
+\end{examplebox}
+
+\subsection{Advantages and Disadvantages of DBSCAN}
+
+\begin{minipage}[t]{0.48\textwidth}
+\textbf{Advantages:}
+\begin{itemize}
+  \item Defining $\varepsilon$ and \texttt{minPts} is intuitive (neutral)
+  \item Works for non-convex data clustering
+\end{itemize}
+\end{minipage}
+\hfill
+\begin{minipage}[t]{0.48\textwidth}
+\textbf{Disadvantages:}
+\begin{itemize}
+  \item $\varepsilon$-dependency
+  \item Cannot detect varying distance
+  \item Non-deterministic
+  \item Large $\varepsilon$ $\to$ single cluster; small $\varepsilon$ $\to$ many clusters
+  \item Cannot work if various densities are present
+  \item One $\varepsilon$ may not work for clusters with different densities
+  \item Single $\varepsilon$ problem:
+        \begin{itemize}
+          \item $\varepsilon$ small: dense cluster recovered but sparse cluster may fragment
+          \item $\varepsilon$ large: bridge points can connect two clusters
+        \end{itemize}
+\end{itemize}
+\end{minipage}
+
+\vspace{1em}
+\begin{notebox}
+\textbf{WCAD (Curse of Dimensionality):} Let $\eta = 0.5$. If $d = 2$: $(0.5)^2 = 0.25 = 25\%$ of data. If $d = 10$: $(0.5)^{10} < 1\%$ of data.\\
+$\Rightarrow$ \textbf{The more the dimension, the more sparse the data will be.}
+\end{notebox}
+
+%==============================================================
+\section{H-DBSCAN (Hierarchical DBSCAN)}
+%==============================================================
+
+\begin{definitionbox}[H-DBSCAN]
+\begin{itemize}
+  \item \textbf{Hierarchical DBSCAN} --- an improved version of DBSCAN.
+  \item Instead of using one fixed $\varepsilon$, it tries many density levels, builds a \textbf{hierarchy of clusters}, and keeps the most stable clusters.
+  \item Handles \textbf{variable density}.
+\end{itemize}
+\end{definitionbox}
+
+\subsection{Algorithm}
+\begin{enumerate}
+  \item Calculate distance matrix.
+  \item Calculate core distance.
+  \item Compute mutual reachability distance (MRD).
+  \item Construct MST (Prim, Kruskal).
+  \item Condense the tree and identify clusters.
+  \item Output final clusters.
+\end{enumerate}
+
+\subsection{H-DBSCAN Example}
+
+\begin{examplebox}
+Points: $A(1,2),\; B(2,2),\; C(2,3),\; D(7,8),\; E(8,7),\; F(25,80)$\quad $\texttt{minPts} = 2$
+
+\textbf{Step 1: Distance Matrix}
+\begin{center}
+\begin{tabular}{ccccccc}
+\toprule
+ & A & B & C & D & E & F \\
+\midrule
+A & 0    & \textbf{1}    & \textbf{1.41} & 8.5  & 8.6  & 82.5  \\
+B & 1    & 0    & \textbf{1}    & 7.81 & 7.81 & 82.34 \\
+C & 1.41 & 1    & 0    & 7.07 & 7.21 & 80.33 \\
+D & 8.5  & 7.81 & 7.07 & 0    & 1.41 & 74.19 \\
+E & 8.6  & 7.81 & 7.21 & 1.41 & 0    & 74.99 \\
+F & 82.5 & 82.34& 80.33& 74.19& 74.99& 0     \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+\textbf{Step 2: Core Distance} ($m = 2$, i.e.\ 2nd nearest neighbor):
+\begin{center}
+\begin{tabular}{cc}
+\toprule
+Point & Core Distance \\
+\midrule
+A & 1.41 \\
+B & 1    \\
+C & 1.41 \\
+D & 7.07 \\
+E & 7.21 \\
+F & 74.99 \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+\begin{notebox}
+\textbf{Note:} If the core distance is larger than the actual distance, it means the point is sparse (itself). A sparse point cannot form a suspiciously cheap bridge to a dense group.
+\end{notebox}
+
+\textbf{Step 3: Mutual Reachability Distance (MRD)}
+
+\[
+\text{MRD}(p, q) = \max\bigl(\text{core}(p),\; \text{core}(q),\; \text{dist}(p, q)\bigr)
+\]
+
+Selected MRD values:
+\begin{align*}
+M(A,B) &= \max(1.41, 1, 1) = 1.41 \\
+M(A,C) &= \max(1.41, 1.41, 1.41) = 1.41 \\
+M(A,D) &= 8.5,\quad M(A,E) = 8.6,\quad M(A,F) = 82.5 \\
+M(B,C) &= 1.41 \quad \text{(forms cycle)} \\
+M(B,D) &= 7.81,\quad M(B,E) = 7.81,\quad M(B,F) = 82.34 \\
+M(C,D) &= 7.07,\quad M(C,E) = 7.21,\quad M(C,F) = 80.33 \\
+M(D,E) &= 7.21 \quad \text{(forms cycle)} \\
+M(D,F) &= 74.99,\quad M(E,F) = 74.99
+\end{align*}
+
+\textbf{Why MRD?} To make clustering more stable, density-aware, and robust to varying densities. Direct distance can be misleading when one point is in a dense region and another is in a sparse region. MRD combines actual distance and local density information.
+
+\textbf{Step 4: Construct MST} (keep adding lowest MRD without forming a cycle):
+\[
+A \xrightarrow{1.41} B,\quad A \xrightarrow{1.41} C,\quad C \xrightarrow{7.07} D,\quad C \xrightarrow{7.21} E,\quad D \xrightarrow{74.99} F
+\]
+
+\begin{center}
+\begin{tabular}{ccc}
+\toprule
+Edge & Distance & $\lambda = 1/\text{dist}$ \\
+\midrule
+A--B & 1.41 & 0.71 \\
+A--C & 1.41 & 0.71 \\
+C--D & 7.21 & 0.14 \\
+C--E & 7.07 & 0.14 \\
+D--F & 74.99 & 0.01 \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+\textbf{Step 5: Cut according to $\varepsilon$} (threshold $= 7$, cutting $D$--$F$):
+
+Cluster: $\{A, B, C\}$; Noise: $\{D\}, \{E\}, \{F\}$ (single clusters)
+
+\textbf{Step 6: Checking Stability of Clusters}
+
+Density parameter $\lambda = \dfrac{1}{\text{distance}}$
+
+Stability:
+\[
+S = |C| \cdot (\lambda_{\text{death}} - \lambda_{\text{birth}})
+\]
+
+\begin{itemize}
+  \item Hierarchy: $\{A,B,C,D,E,F\}$ $\xrightarrow{\text{cut }74.99}$ $\{A,B,C,D,E\}$ + $\{F\}$
+  \item $\{A,B,C,D,E\}$ $\xrightarrow{\text{cut }7.21}$ $\{A,B,C,E\}$ + $\{D\}$
+  \item $\{A,B,C,E\}$ $\xrightarrow{\text{cut }7.07}$ $\{A,B,C\}$ + $\{E\}$
+  \item $\{A,B,C\}$ $\xrightarrow{\text{cut }1.41}$ $\{A,B\}$ + $\{C\}$
+  \item $\{A,B\}$ $\xrightarrow{\text{cut }1.41}$ $\{A\}$ + $\{B\}$
+\end{itemize}
+
+For $\{A,B,C\}$ cluster:
+\[
+\lambda_{\text{birth}} = \frac{1}{7.07} = 0.14, \quad \lambda_{\text{death}} = \frac{1}{1.41} = 0.71, \quad \text{size} = 3
+\]
+\[
+S = 3 \times (0.71 - 0.14) = 1.71 \quad \text{(more stable)}
+\]
+
+For $\{A,B\}$:
+\[
+S = 2\left(\frac{1}{1.41} - \frac{1}{1.41}\right) = 0 \quad \text{(immediately splits)}
+\]
+
+For $\{A,B,C,E\}$:
+\[
+S = 4 \times \left(\frac{1}{7.07} - \frac{1}{7.21}\right) \approx 0.011
+\]
+
+For $\{A,B,C,D,E\}$:
+\[
+S = 5 \times \left(\frac{1}{7.21} - \frac{1}{74.99}\right) \approx 0.62
+\]
+
+\textbf{Result:} $\{A,B,C\}$ is the cluster; others are noise.
+\end{examplebox}
+
+\subsection{Disadvantages of H-DBSCAN}
+\begin{itemize}
+  \item Time consuming.
+  \item Complex algorithm.
+\end{itemize}
+
+%==============================================================
+\section{K-Medoids Clustering}
+%==============================================================
+
+\begin{definitionbox}[K-Medoids]
+\begin{itemize}
+  \item Uses \textbf{Manhattan distance}: $M(x,y) = |x_1 - x_2| + |y_1 - y_2|$.
+  \item $k$ will be given.
+  \item Find two medoids' values that belong to value $k_1$ and $k_2$.
+\end{itemize}
+\end{definitionbox}
+
+\subsection{Example}
+
+\begin{examplebox}
+Points: $A(2,3),\; B(5,7),\; C(8,3),\; D(3,5),\; E(7,2),\; F(6,8)$,\\
+$G(1,4),\; H(4,6),\; I(9,5),\; J(5,4)$. $k = 2$.
+
+Let $A$ be medoid $k_1$ and $F$ be medoid $k_2$.
+
+\begin{center}
+\begin{tabular}{cccc}
+\toprule
+Point & Dist $k_1$ (A) & Dist $k_2$ (F) & Cluster \\
+\midrule
+A & 0 & 9  & $k_1$ \\
+B & 7 & \textbf{2}  & $k_2$ \\
+C & 6 & 7  & $k_1$ \\
+D & \textbf{3} & 6  & $k_1$ \\
+E & \textbf{6} & 7  & $k_1$ \\
+F & 9 & \textbf{0}  & $k_2$ \\
+G & \textbf{2} & 9  & $k_1$ \\
+H & 5 & \textbf{4}  & $k_2$ \\
+I & 9 & \textbf{6}  & $k_2$ \\
+J & \textbf{4} & 5  & $k_1$ \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+\textbf{Clusters:} $C_1(A,C,D,E,G,J)$ and $C_2(B,F,H,I)$
+
+$\text{cost} = 6 + 0 + 2 + 3 + 6 + 2 + 4 \ldots = 33$ (sum minimum distances)
+
+$\Rightarrow$ Then choose another medoid, e.g.\ $k_2 = D$, cost $= 35$ (larger, so discard; previous was good).
+\end{examplebox}
+
+\subsection{Disadvantages of K-Medoids}
+\begin{itemize}
+  \item Too much comparison.
+  \item Time consuming.
+  \item Must specify $k$.
+  \item Slower convergence.
+\end{itemize}
+
+%==============================================================
+\section{Hierarchical Clustering (Agglomerative)}
+%==============================================================
+
+\subsection{Example}
+
+\begin{examplebox}
+Points: $P_1(0.40,0.53),\; P_2(0.22,0.38),\; P_3(0.35,0.32),\; P_4(0.26,0.19),\; P_5(0.08,0.41),\; P_6(0.45,0.30)$
+
+\textbf{Distance Matrix:}
+\begin{center}
+\begin{tabular}{ccccccc}
+\toprule
+ & $P_1$ & $P_2$ & $P_3$ & $P_4$ & $P_5$ & $P_6$ \\
+\midrule
+$P_1$ & 0    &      &       &       &       &       \\
+$P_2$ & 0.23 & 0    &       &       &       &       \\
+$P_3$ & 0.22 & 0.15 & 0     &       &       &       \\
+$P_4$ & 0.37 & 0.20 & 0.15  & 0     &       &       \\
+$P_5$ & 0.34 & 0.14 & 0.28  & 0.29  & 0     &       \\
+$P_6$ & 0.23 & 0.25 & \textbf{0.11} & 0.22 & 0.39 & 0     \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+\textbf{Iteration 1:} Minimum distance $= 0.11$ between $P_3$ and $P_6$. Merge $\to P_{3,6}$.
+
+\textbf{Iteration 2:} Update matrix; minimum $= 0.14$ between $P_2$ and $P_5$. Merge $\to P_{2,5}$.
+
+\textbf{Iteration 3:} Minimum $= 0.15$ between $P_{3,6}$ and $P_4$. Merge $\to P_{3,4,6}$.
+
+\textbf{Iteration 4:} Minimum $= 0.22$ between $P_1$ and $P_{2,3,4,5,6}$. Merge all.
+
+\textbf{Dendrogram:} Shows nested groupings: $\{2,5\},\;\{3,6\} \to \{3,4,6\} \to$ all together.
+
+The diagram shows: Points 2 and 5 merge first, 3 and 6 merge, then 3,6,4 merge, then all points join at the top.
+\end{examplebox}
+
+%==============================================================
+\section{Decision Trees (ID3 Algorithm)}
+%==============================================================
+
+\subsection{Entropy}
+
+\[
+\text{Entropy}(S) = -\sum_i p_i \log_2(p_i)
+\]
+
+\subsection{Information Gain}
+
+\[
+\text{Gain}(S, a) = \text{Entropy}(S) - \sum_v \frac{|S_v|}{|S|}\,\text{Entropy}(S_v)
+\]
+
+\subsection{Example}
+
+\begin{examplebox}
+Dataset ($n=10$): Attributes $a_1$ (T/F), $a_2$ (H/C), $a_3$ (H/N), Classification (Yes/No).
+
+\begin{center}
+\begin{tabular}{ccccc}
+\toprule
+ID & $a_1$ & $a_2$ & $a_3$ & Class \\
+\midrule
+1 & T & H & H & No \\
+2 & T & H & H & No \\
+3 & F & H & H & Yes \\
+4 & F & C & N & Yes \\
+5 & F & C & N & Yes \\
+6 & T & C & H & No \\
+7 & T & H & H & No \\
+8 & T & H & N & Yes \\
+9 & F & C & N & Yes \\
+10 & F & C & H & Yes \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+$S = [6+, 4-]$:
+\[
+\text{En}(S) = -\frac{6}{10}\log_2\!\left(\frac{6}{10}\right) - \frac{4}{10}\log_2\!\left(\frac{4}{10}\right) = 0.9709
+\]
+
+$S_\text{True} = [1+, 5-]$:
+\[
+E(S_\text{True}) = -\frac{1}{5}\log_2\!\left(\frac{1}{5}\right) - \frac{4}{5}\log_2\!\left(\frac{4}{5}\right) = 0.7219
+\]
+
+$S_\text{False} = [5+, 0-]$:
+\[
+E(S_\text{False}) = 0.0
+\]
+
+\[
+\text{Gain}(S, a_1) = 0.9709 - \frac{5}{10}(0.7219) - \frac{5}{10}(0.0) = 0.6099
+\]
+\end{examplebox}
+
+%==============================================================
+\section{Logistic Regression}
+%==============================================================
+
+\subsection{Background: Linear Regression}
+
+\[
+\hat{y} = m_1 x_1 + m_2 x_2 + m_3 x_3 + \cdots
+\]
+
+\subsection{Sigmoid Function}
+
+The sigmoid function comes from the idea of converting any real number into a value between 0 and 1, so that it can represent probability.
+
+In logistic regression: $P(y=1) = ?$, $0 \leq P \leq 1$.
+
+But the linear equation $z = w_1 x_1 + w_2 x_2 + b$ can produce $-\infty$ to $+\infty$.
+
+\[
+\text{odds} = \frac{p}{1-p} \quad \text{where } p = \text{probability of class 1}
+\]
+
+If $p = 0.8$: $\text{odds} = \dfrac{0.8}{0.2} = 4$ (it means success is 4 times more likely).
+
+\[
+\text{logit} = \log\!\left(\frac{p}{1-p}\right) \quad \text{(can range from } -\infty \text{ to } +\infty\text{)}
+\]
+
+\textbf{Derivation of sigmoid:}
+\[
+\log\!\left(\frac{p}{1-p}\right) = z \quad \Rightarrow \quad \frac{p}{1-p} = e^z \quad \Rightarrow \quad p = e^z - e^z p
+\]
+\[
+\Rightarrow\quad p(1 + e^z) = e^z \quad \Rightarrow \quad
+\boxed{p(y) = \frac{1}{1+e^{-z}}} \quad \text{(sigmoid function)}
+\]
+
+\begin{itemize}
+  \item It transforms probabilities into an unbounded scale, making them suitable for linear modeling.
+  \item The sigmoid function makes the output of linear regression bounded.
+  \item The value after passing through the activation function is \textbf{not} the actual probability.
+\end{itemize}
+
+%==============================================================
+\section{Loss Function}
+%==============================================================
+
+\begin{definitionbox}[Loss Function]
+\begin{itemize}
+  \item Measures how wrong the model's prediction is.
+  \item Smaller loss means better prediction.
+  \item ML algorithm tries to \textbf{minimize the loss}.
+\end{itemize}
+\end{definitionbox}
+
+Let $y$ = actual/expected output, $\hat{y}$ = actual output. Then $y - \hat{y} = 0$ means no error.
+
+\subsection{Binary Cross-Entropy Loss}
+
+\[
+\boxed{\mathcal{L} = -\left[y\ln(\hat{y}) + (1-y)\ln(1-\hat{y})\right]}
+\]
+
+\textbf{Cases:}
+
+\begin{enumerate}
+  \item \textbf{$y = \hat{y} = 0$:}
+        \[
+        \mathcal{L} = -\bigl[0 + (1-0)\ln(1-0)\bigr] = -\ln(1) = 0 \quad \text{(no error)}
+        \]
+
+  \item \textbf{$y = 0,\; \hat{y} = 1$} (worst possible prediction):
+        \[
+        \mathcal{L} = -\bigl[0 + (1-0)\ln(1-1)\bigr] = -\ln(0) = \infty \quad \text{(extremely large)}
+        \]
+
+  \item \textbf{$y = 1,\; \hat{y} = 0$}:
+        \[
+        \mathcal{L} = -\bigl[1 \cdot \ln(0) + 0\cdot \ln(1)\bigr] = -\ln(0) = \infty \quad \text{(extremely large)}
+        \]
+
+  \item \textbf{$y = \hat{y} = 1$:}
+        \[
+        \mathcal{L} = -\bigl[1\cdot \ln(1) + 0\cdot\ln(0)\bigr] = 0 \quad \text{(correct prediction)}
+        \]
+\end{enumerate}
+
+%==============================================================
+\section{Neural Networks}
+%==============================================================
+
+\begin{definitionbox}[Neural Networks]
+\begin{itemize}
+  \item A machine learning model.
+  \item It learns patterns from data using interconnected units called \textbf{neurons}.
+  \item Usually has input, hidden, and output layers.
+  \item Used for both regression and classification.
+  \item Neuron: $x_i \xrightarrow{w} \bigcirc \xrightarrow{} y$, where $y = wx + b$.
+  \item Neurons work linearly, but that is not effective. That's why \textbf{non-linearity is introduced by activation functions}.
+  \item Common activations: Sigmoid $\to \dfrac{1}{1+e^{-z}}$,\quad ReLU $\to \max(0,x)$,\quad $\tanh \to \tanh(z)$.
+\end{itemize}
+\end{definitionbox}
+
+%==============================================================
+\section{Autodiff (Automatic Differentiation)}
+%==============================================================
+
+\subsection{Normal way vs.\ Autodiff}
+
+Let $a=4,\; b=3,\; c=a+b,\; d=a \times c$.
+
+\textbf{Traditional way:}
+\[
+d = a \times c \quad \Rightarrow \quad \frac{\partial d}{\partial a} = \frac{\partial a}{\partial a}\cdot c + \frac{\partial c}{\partial a}\cdot a = c + a \cdot \frac{\partial c}{\partial a}
+\]
+\[
+= (a+b) + a \cdot \frac{\partial(a+b)}{\partial a} = a+b + a\cdot\left(\frac{\partial a}{\partial a} + \frac{\partial b}{\partial a}\right) = a+b+a(1+0)
+\]
+\[
+= a + b + a = 4+3+4 = 11 \text{\checkmark}
+\]
+
+\textbf{Autodiff} (local derivatives):
+Local derivatives through the computation graph:
+\[
+\frac{\partial d}{\partial a} = \underbrace{\frac{\partial d}{\partial c}\cdot\frac{\partial c}{\partial a}}_{\text{path via }c} + \underbrace{\frac{\partial d}{\partial a}}_{\text{direct}}
+= a \cdot 1 + c = a + (a+b) = a + b + a = 11
+\]
+
+\subsection{Comparison: Local vs.\ Partial Derivative}
+
+\begin{center}
+\begin{tabular}{p{6cm}p{6cm}}
+\toprule
+\textbf{Local Derivative} & \textbf{Partial Derivative} \\
+\midrule
+Derivative at one operation & Derivative in multivariable function \\
+Immediate relationship & One variable fixed, others change \\
+E.g.\ $z = x^2 \Rightarrow \dfrac{dz}{dx} = 2x$ & E.g.\ $f(x,y) = x^2 + 3y \Rightarrow \dfrac{\partial f}{\partial x} = 2x,\; \dfrac{\partial f}{\partial y} = 3$ \\
+Only includes $z$ and $x$ & Multiple variables \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+\subsection{Use of Autodiff}
+\begin{itemize}
+  \item Computes $\dfrac{\partial \mathcal{L}}{\partial w}$ for all weights during \textbf{backpropagation}.
+  \item Backpropagation uses the \textbf{reverse mode} of autodiff.
+\end{itemize}
+
+%==============================================================
+\section{Autoencoder}
+%==============================================================
+
+\begin{definitionbox}[Autoencoder]
+A type of neural network architecture used in DL for \textbf{unsupervised learning} and \textbf{dimensionality reduction} tasks.
+\begin{itemize}
+  \item Compresses data and makes encoded data.
+  \item Keeps the important features.
+  \item Decoding means reconstruction.
+\end{itemize}
+\end{definitionbox}
+
+\subsection{Structure}
+
+Encoder: $512 \to 256 \to 128 \to 64 \to \mathbf{49}$ (bottleneck) $\to 64 \to 128 \to 256 \to 512$: Decoder
+
+\begin{itemize}
+  \item Auto-encoder uses a bottleneck layer which forces the network to learn compact dimensionality representation. It uses the $64 \times (h \times w)$ and other dimension features.
+  \item Compressed: $1000 \to 500$.
+  \item Auto-encoder both the input take. Input depth is smaller.
+\end{itemize}
+
+%==============================================================
+\section{NN for Dimensionality Reduction}
+%==============================================================
+
+NN mainly uses for dimensionality reduction. For both the input, auto-encoder takes the input depth.
+
+The encoder part reduces dimensions; the decoder part (reconstruction) tries to recreate the original input.
+
+%==============================================================
+\section{NN for Outlier Detection}
+%==============================================================
+
+Here, \textbf{auto-encoder is used again}.
+
+\begin{enumerate}
+  \item Train the autoencoder using \textbf{normal data}. The network becomes good at reconstructing the normal patterns.
+  \item If it gives bad reconstruction, then \textbf{unusual data were used}.
+  \item Reconstruction error (loss):
+        \[
+        \mathcal{L} = \|x - \hat{x}\|^2
+        \]
+        where $x$ = original input, $\hat{x}$ = reconstructed output.
+  \item If error is small $\Rightarrow$ no anomaly; if error is larger $\Rightarrow$ outlier.
+\end{enumerate}
+
+\subsection{Example}
+
+\begin{examplebox}
+$x = [1, 2, 3]$, $\hat{x} = [1.1, 2.0, 2.9]$
+
+\[
+\mathcal{L} = (0.1)^2 + (0)^2 + (0.1)^2 = 0.02 \quad \text{(small)} \Rightarrow \text{not an outlier}
+\]
+\end{examplebox}
+
+%==============================================================
+\section{Why Normal ANN is Not Suitable for Image Processing}
+%==============================================================
+
+\textbf{Reason 1: Too Many Parameters}
+
+A small $224 \times 224$ RGB image has $3 \times 224^2 = 150{,}528$ input values. If the first hidden layer has just 1000 neurons, that's $\sim 150$ million parameters --- just for one layer. This leads to:
+\begin{itemize}
+  \item Enormous memory requirements.
+  \item Slow training.
+\end{itemize}
+
+\textbf{Reason 2: No Spatial Awareness}
+
+Plain NN treats every pixel as an independent input. They have no concept of spatial relationship. They lose all 2D structure by flattening the image into a 1D vector.
+
+\textbf{Reason 3: Not Translation Invariant}
+
+It has no relation for the same concept at every possible location. One pen at left corner, another pen at bottom right --- NN treats them completely differently.
+
+\textbf{That's why NN is not suitable $\Rightarrow$ use CNN.}
+
+%==============================================================
+\section{CNN (Convolutional Neural Network)}
+%==============================================================
+
+\begin{definitionbox}[CNN]
+\begin{itemize}
+  \item Convolutional Neural Network.
+  \item Designed to understand \textbf{edges, textures, shapes, objects} from images.
+  \item Uses convolution, filters, pooling.
+  \item Has many layers.
+\end{itemize}
+\end{definitionbox}
+
+\subsection{Layers}
+
+\textbf{Convolution Layer:} Uses small filters/kernels, e.g.:
+\[
+\begin{pmatrix} 1 & 0 & -1 \\ 1 & 0 & -1 \\ 1 & 0 & -1 \end{pmatrix} \quad \text{(detects vertical edges)}
+\]
+
+\textbf{Pooling Layer:} Reduces image size. Most common: max pooling, average pooling, etc.
+
+\textbf{Fully Connected Layer:} Final classification stage.
+
+\subsection{Working Flow}
+
+\[
+\text{Image} \to \text{Convolution} \xrightarrow{\text{ReLU}} \text{Pooling} \to \text{repeat} \to \text{Fully Connected} \to \text{Prediction}
+\]
+
+%==============================================================
+\section{Excitation Channels (SE Block)}
+%==============================================================
+
+Not every channel has the same importance. So we assign weights. If one channel doesn't contain any info, its weight will be 0. Per-channel attention will be calculated by MPN (max pooling network).
+
+\begin{definitionbox}[Squeeze-and-Excitation (SE) Block]
+\textbf{Channel attention} means the network learns which feature channels are more important. One famous method is the \textbf{Squeeze-and-Excitation (SE) Block}.
+
+After convolution, CNN produces many feature maps/channels (e.g.\ edge detector channel, texture channel, color channel). But not every channel is equally important.
+
+SE blocks learn which channels should be \textbf{emphasized} and which should be \textbf{suppressed}.
+\end{definitionbox}
+
+\subsection{Steps}
+
+\textbf{Step 1 -- Squeeze:} Compress each feature map into one number using \textbf{Global Average Pooling}:
+\[
+z_c = \frac{1}{H \times W} \sum_{i=1}^{H}\sum_{j=1}^{W} x_c(i,j)
+\]
+This captures the importance of a channel.
+
+\textbf{Step 2 -- Excitation:} The compressed value passes through a small neural network (sigmoid functions are used).
+
+$\Rightarrow$ Finally multiply channel by attention weight.
+
+\subsection{Workflow}
+
+\[
+\text{Feature map} \xrightarrow{\text{Squeeze (Global Avg Pooling)}} \xrightarrow{\text{Excitation (ReLU + Sigmoid)}} \text{Attention weights}
+\]
+\[
+\xrightarrow{\text{Channel reweighting}} \text{Refined feature map}
+\]
+
+%==============================================================
+\section{Depthwise Separable Convolution}
+%==============================================================
+
+\begin{definitionbox}[Depthwise Separable Convolution]
+\begin{itemize}
+  \item Reduces the number of floating point operations and learnable parameters.
+  \item Splits convolution into 2 parts:
+        \begin{enumerate}
+          \item Depthwise convolution
+          \item Pointwise convolution
+        \end{enumerate}
+\end{itemize}
+\end{definitionbox}
+
+\subsection{Normal Convolution vs.\ DSC}
+
+\textbf{Normal Convolution:}\\
+Filter: $5\times5\times64$, Input: $32\times32\times64$, Output: $32\times32\times128$
+\[
+\text{\# learnable params} = 5\times5\times64\times128 = 204{,}800 \approx 204\text{k}
+\]
+\[
+\text{\# multiplications} = 5\times5\times64\times32\times32\times128 \approx 209\text{ Million}
+\]
+
+\textbf{Depthwise Separable Convolution (DSC):}\\
+Filter: $5\times5\times1$ (per channel), Input: $32\times32\times64$
+\[
+\text{\# learnable params} = (5\times5\times1\times64) + (1\times1\times64\times128) = 1600 + 8192 = 9792
+\]
+\[
+\text{\# multiplications} = (5\times5\times1\times32\times32\times64) + (1\times1\times64\times32\times3\times64)
+\approx 10\text{M}
+\]
+
+$\Rightarrow$ Thus we're able to \textbf{significantly reduce} the number of learnable parameters and multiplications. So less memory and computation is required.
+
+\begin{center}
+\begin{tabular}{lccc}
+\toprule
+Feature & Normal Conv & Depthwise & Dilated \\
+\midrule
+Goal & Feature extraction & Reduce computation & Increase receptive field \\
+Parameters & High & Low & Similar to normal \\
+Speed & Slower & Faster & Moderate \\
+Used in & Standard CNN & Mobile CNN & Segmentation context \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+%==============================================================
+\section{Dilated Convolution}
+%==============================================================
+
+\begin{definitionbox}[Dilated Convolution]
+A technique that expands the kernel (input) by inserting holes between its consecutive elements. It is the same as convolution but it involves pixel skipping, so as to cover a larger area of the input.
+
+\[
+\Rightarrow \text{Without increasing the parameters, it enables the network to have a larger \textbf{receptive field}.}
+\]
+\end{definitionbox}
+
+Dilation factor $l=1$ (normal convolution) vs.\ $l=2$ (dilated convolution, skips every other pixel).
+
+%==============================================================
+\section{Outlier Detection Methods}
+%==============================================================
+
+\begin{enumerate}
+  \item \textbf{Statistical method}: Z-score ($|z| > 3$ then outlier)
+  \item \textbf{Distance-based method}: KNN
+  \item \textbf{Density-based method}: DBSCAN
+  \item \textbf{Neural network method}: Autoencoder
+\end{enumerate}
+
+%==============================================================
+\section{Problem with Euclidean Distance}
+%==============================================================
+
+\begin{notebox}
+Euclidean distance does not consider \textbf{correlation, scale, covariance}.
+\end{notebox}
+
+\subsection{Example}
+
+\begin{examplebox}
+Height-weight data:
+\begin{center}
+\begin{tabular}{cc}
+\toprule
+Height (cm) & Weight (kg) \\
+\midrule
+150 & 45 \\
+160 & 55 \\
+170 & 65 \\
+180 & 75 \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+Strong correlation: taller people have heavier weight.
+
+Now if Height, Weight $= (180, 45)$: individually 180 and 45 are normal, but \textbf{together} abnormal (heavyweight is low for that height).
+
+$\Rightarrow$ Euclidean fails to predict this.
+\end{examplebox}
+
+%==============================================================
+\section{Mahalanobis Distance}
+%==============================================================
+
+\begin{definitionbox}[Mahalanobis Distance]
+It considers \textbf{covariance, correlation between features, multivariant relationships}.
+
+\[
+\boxed{D_M = \sqrt{(x-\mu)^T \,\Sigma^{-1}\, (x-\mu)}}
+\]
+
+where $\Sigma^{-1}$ is the inverse covariance matrix.
+
+\textbf{Larger $D_M$ means outlier.}
+\end{definitionbox}
+
+\subsection{Decision Rule}
+\[
+D_M^2 > \chi^2_{\text{threshold}} \Rightarrow \text{anomaly}
+\]
+\[
+D_M^2 < \chi^2_{\text{threshold}} \Rightarrow \text{normal}
+\]
+
+\subsection{Example}
+
+\begin{examplebox}
+Student height-weight data:
+\begin{center}
+\begin{tabular}{ccc}
+\toprule
+Student & Height (cm) & Weight (kg) \\
+\midrule
+A & 150 & 50 \\
+B & 160 & 60 \\
+C & 170 & 70 \\
+D & 180 & 80 \\
+E & 180 & 50 \\
+\bottomrule
+\end{tabular}
+\end{center}
+Check if $E(180, 50)$ is an anomaly or not.
+
+\textbf{Solution:}
+\[
+\mu_h = 168, \quad \mu_w = 62, \quad \bm{\mu} = (168, 62)
+\]
+\[
+\Sigma = \begin{pmatrix} 170 & 110 \\ 110 & 170 \end{pmatrix}, \quad
+\Sigma^{-1} = \begin{pmatrix} 0.0107 & -0.0069 \\ -0.0069 & 0.0107 \end{pmatrix}
+\]
+
+For $E$: $x - \mu = \begin{pmatrix} 12 \\ -12 \end{pmatrix}$
+
+\[
+D_M^2 = \begin{pmatrix} 12 & -12 \end{pmatrix}
+\begin{pmatrix} 0.0107 & -0.0069 \\ -0.0069 & 0.0107 \end{pmatrix}
+\begin{pmatrix} 12 \\ -12 \end{pmatrix} = 5.30
+\]
+\[
+D_M = \sqrt{5.30} \approx 2.30
+\]
+
+Degrees of freedom $= 2$.
+
+$\chi^2_{0.95,\;2} = 5.99$
+
+Since $D_M^2 = 5.30 < 5.99$, point $E$ is \textbf{normal}.
+\end{examplebox}
+
+\end{document}
