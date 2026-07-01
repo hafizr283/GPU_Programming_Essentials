@@ -191,7 +191,7 @@ Using the $z$ values, solve $L^T x_u = z$ by backward substitution.
 **Step 2** — Solve $y_i$ (same procedure):
 
 ```math
-(X_i^T X_i + \lambda I)\, y_i = X_i^T p_u
+(X_i^T X_i + \lambda I)\, y_i = X_i^T r_i
 ```
 
 **Step 3** — Check convergence. If not converged, repeat from Step 1.
