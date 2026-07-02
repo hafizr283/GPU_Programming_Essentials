@@ -195,3 +195,96 @@ Using the $z$ values, solve $L^T x_u = z$ by backward substitution.
 ```
 
 **Step 3** — Check convergence. If not converged, repeat from Step 1.
+
+## The Scalar Path: Computing $A$ and $b$
+
+```math
+A := (Y_u^T Y_u + \lambda I) = \text{L.H.S}
+```
+
+```math
+b = \text{R.H.S}
+```
+
+In the left hand side, we have to calculate $Y_u^T Y_u$. We use the **register tiling** approach — register is the fastest local memory in a thread. General approach:
+
+- `thread(0,0)` → calculates row $0 \times$ col $0$
+- `thread(1,0)` → calculates row $1 \times$ col $0$
+
+Let $u = 3$ has ratings in items $0, 3, 9$.
+
+```math
+\text{L.H.S} = Y_u^T \times Y_u = \begin{bmatrix} 0.6 & 0.1 & 0.5 \\ 0.2 & 0.7 & 0.3 \\ 0.5 & 0.4 & 0.9 \end{bmatrix} \times \begin{bmatrix} 0.6 & 0.2 & 0.5 \\ 0.1 & 0.7 & 0.4 \\ 0.5 & 0.3 & 0.9 \end{bmatrix}
+```
+
+`LHS[0][0]` = (row 0 of $Y_u^T$) $\times$ (col 0 of $Y_u$) → calculated by `thread(0,0)`
+
+```math
+\text{LHS}[0][0] = \begin{bmatrix} 0.6 & 0.1 & 0.5 \end{bmatrix} \times \begin{bmatrix} 0.6 \\ 0.1 \\ 0.5 \end{bmatrix} = 0.36 + 0.01 + 0.25 = 0.62
+```
+
+Similarly, `thread(1,0)` calculates row $1 \times$ col $0$ = `LHS[1][0]`:
+
+```math
+\text{LHS}[1][0] = \begin{bmatrix} 0.2 & 0.7 & 0.3 \end{bmatrix} \times \begin{bmatrix} 0.6 \\ 0.1 \\ 0.5 \end{bmatrix} = 0.12 + 0.07 + 0.15 = 0.34
+```
+
+### Thread Block Optimization
+
+For $K = 64$, calculating L.H.S needs $64 \times 64 = 4096$ threads in a block. If 1 thread calculates 4 values, we only need $4096 / 4 = 1024$ threads — fits in one block (GPU max is 1024 threads per block).
+
+- `thread(0,0)` → Row 0 col 0;  Row 0 col 1;  Row 1 col 0;  Row 1 col 1 — stored in local registers
+- `thread(1,0)` → Row 2 col 0;  Row 3 col 0;  Row 2 col 1;  Row 3 col 1
+
+Generally: `thread x*2` and `thread x*2+1` will calculate.
+
+**Example for `thread(0,0)`** (computes $2 \times 2$ block: rows $0,1$ $\times$ cols $0,1$):
+
+```math
+\text{LHS}[0][0] = 0.62, \quad \text{LHS}[0][1] = (0.6)(0.2)+(0.1)(0.7)+(0.5)(0.3) = 0.12+0.07+0.15 = 0.34
+```
+
+```math
+\text{LHS}[1][0] = 0.34, \quad \text{LHS}[1][1] = (0.2)(0.2)+(0.7)(0.7)+(0.3)(0.3) = 0.04+0.49+0.09 = 0.62
+```
+
+### R.H.S = $b$ Calculation
+
+$Y_u^T$ portion already has calculation in L.H.S. $r_u$ is a column vector — we don't need a full R.H.S thread. Condition: if `thread_y == 0`, do $b$ calculation.
+
+- `thread(0,0)` → `b[0]`, `b[1]`
+- `thread(2,0)` → `b[2]`, `b[3]`
+
+and so on.
+
+For `thread(0,0)`, which already has row 0, row 1, col 0, col 1 stored, and $r_u = [4,\ 3,\ 2]^T$ (ratings of $u=3$ for items $0, 3, 9$):
+
+```math
+b[0] = \text{row 0 of } Y_u^T \times r_u = \begin{bmatrix} 0.6 & 0.1 & 0.5 \end{bmatrix} \times \begin{bmatrix} 4 \\ 3 \\ 2 \end{bmatrix} = 2.4 + 0.3 + 1.0 = 3.7
+```
+
+```math
+b[1] = \text{row 1 of } Y_u^T \times r_u = \begin{bmatrix} 0.2 & 0.7 & 0.3 \end{bmatrix} \times \begin{bmatrix} 4 \\ 3 \\ 2 \end{bmatrix} = 0.8 + 2.1 + 0.6 = 3.5
+```
+
+## The Tensor Core Path (wmma — warp matrix multiplication)
+
+Tensor core can solve matrix multiplication in just one cycle:
+
+```math
+C = A \times B + C
+```
+
+where $A$, $B$, $C$ are all $16 \times 16$ matrices.
+
+1 warp (32 threads) can compute this multiplication-addition. The reason: every thread in a warp stores 8 register data, so 32 threads store $32 \times 8 = 256$ data ($16 \times 16$). With every thread, parallel data computes $16 \times 16$ matrix multiplication with specialized hardware acceleration — tensor core.
+
+### What if the matrix is $32 \times 32$?
+
+By calculating submatrix multiplications we can calculate the whole matrix ($32 \times 32$).
+
+```math
+\begin{bmatrix} A_1 & A_2 \\ B_1 & B_2 \end{bmatrix} \times \begin{bmatrix} C_1 & D_1 \\ C_2 & D_2 \end{bmatrix} = \begin{bmatrix} A_1C_1 + A_2C_2 & A_1D_1 + A_2D_2 \\ B_1C_1 + B_2C_2 & B_1D_1 + B_2D_2 \end{bmatrix}
+```
+
+All $A$, $B$, $C$, $D$ matrices are $16 \times 16$ — so we can use warp matrix multiplication here.
